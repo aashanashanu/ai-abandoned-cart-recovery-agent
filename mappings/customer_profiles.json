@@ -1,0 +1,23 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "customer_id": { "type": "keyword" },
+      "email": { "type": "keyword" },
+      "phone": { "type": "keyword" },
+      "push_token": { "type": "keyword" },
+      "segment": { "type": "keyword" },
+      "lifetime_value": { "type": "double" },
+      "preferred_channel": { "type": "keyword" },
+      "fraud_risk": { "type": "keyword" },
+      "locale": { "type": "keyword" },
+      "timezone": { "type": "keyword" },
+      "last_purchase_at": { "type": "date" }
+    }
+  }
+}

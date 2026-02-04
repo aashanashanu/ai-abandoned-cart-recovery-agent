@@ -1,0 +1,23 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "payment_id": { "type": "keyword" },
+      "checkout_id": { "type": "keyword" },
+      "cart_id": { "type": "keyword" },
+      "customer_id": { "type": "keyword" },
+      "provider": { "type": "keyword" },
+      "status": { "type": "keyword" },
+      "failure_code": { "type": "keyword" },
+      "failure_message": { "type": "text" },
+      "retryable": { "type": "boolean" },
+      "gateway_latency_ms": { "type": "integer" },
+      "attempt": { "type": "integer" }
+    }
+  }
+}

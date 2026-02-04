@@ -1,0 +1,26 @@
+{
+  "cart_events": {
+    "query": {
+      "bool": {
+        "filter": [
+          { "term": { "cart_id": "{{cart_id}}" } },
+          { "range": { "@timestamp": { "gte": "now-7d" } } }
+        ]
+      }
+    },
+    "sort": [{ "@timestamp": { "order": "desc" } }],
+    "size": 50
+  },
+  "checkout_events": {
+    "query": {
+      "bool": {
+        "filter": [
+          { "term": { "cart_id": "{{cart_id}}" } },
+          { "range": { "@timestamp": { "gte": "now-7d" } } }
+        ]
+      }
+    },
+    "sort": [{ "@timestamp": { "order": "desc" } }],
+    "size": 50
+  }
+}

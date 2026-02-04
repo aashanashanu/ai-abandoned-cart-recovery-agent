@@ -1,0 +1,24 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "cart_id": { "type": "keyword" },
+      "customer_id": { "type": "keyword" },
+      "session_id": { "type": "keyword" },
+      "event_type": { "type": "keyword" },
+      "product_id": { "type": "keyword" },
+      "quantity": { "type": "integer" },
+      "unit_price": { "type": "double" },
+      "cart_value": { "type": "double" },
+      "currency": { "type": "keyword" },
+      "device_type": { "type": "keyword" },
+      "page": { "type": "keyword" },
+      "referrer": { "type": "keyword" }
+    }
+  }
+}

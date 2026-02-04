@@ -1,0 +1,28 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "filter": [
+        { "range": { "@timestamp": { "gte": "now-24h" } } }
+      ]
+    }
+  },
+  "aggs": {
+    "by_cart": {
+      "terms": {
+        "field": "cart_id",
+        "size": 500
+      },
+      "aggs": {
+        "last_seen": { "max": { "field": "@timestamp" } },
+        "last_event": {
+          "top_hits": {
+            "size": 1,
+            "sort": [{ "@timestamp": { "order": "desc" } }],
+            "_source": { "includes": ["cart_id","customer_id","session_id","cart_value","currency","device_type","event_type","@timestamp"] }
+          }
+        }
+      }
+    }
+  }
+}

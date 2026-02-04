@@ -1,0 +1,19 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "session_id": { "type": "keyword" },
+      "customer_id": { "type": "keyword" },
+      "route": { "type": "keyword" },
+      "device_type": { "type": "keyword" },
+      "p95_latency_ms": { "type": "integer" },
+      "error_rate": { "type": "double" },
+      "apdex": { "type": "double" }
+    }
+  }
+}

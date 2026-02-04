@@ -1,0 +1,30 @@
+{
+  "size": 20,
+  "query": {
+    "bool": {
+      "filter": [
+        { "term": { "diagnosis.root_cause": "{{root_cause}}" } },
+        { "term": { "segment": "{{segment}}" } },
+        { "range": { "@timestamp": { "gte": "now-180d" } } }
+      ]
+    }
+  },
+  "aggs": {
+    "by_action": {
+      "terms": { "field": "action.type", "size": 10 },
+      "aggs": {
+        "success_rate": {
+          "avg": {
+            "script": {
+              "source": "doc['outcome.status'].size()==0 ? 0 : (doc['outcome.status'].value == 'recovered' ? 1 : 0)"
+            }
+          }
+        },
+        "avg_recovered": { "avg": { "field": "outcome.revenue_recovered" } }
+      }
+    }
+  },
+  "sort": [
+    { "@timestamp": { "order": "desc" } }
+  ]
+}

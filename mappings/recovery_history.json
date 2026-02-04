@@ -1,0 +1,42 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "@timestamp": { "type": "date" },
+      "recovery_id": { "type": "keyword" },
+      "cart_id": { "type": "keyword" },
+      "customer_id": { "type": "keyword" },
+      "segment": { "type": "keyword" },
+      "cart_value": { "type": "double" },
+      "currency": { "type": "keyword" },
+      "diagnosis": {
+        "properties": {
+          "root_cause": { "type": "keyword" },
+          "signals": { "type": "keyword" }
+        }
+      },
+      "action": {
+        "properties": {
+          "type": { "type": "keyword" },
+          "channel": { "type": "keyword" },
+          "discount_percent": { "type": "double" },
+          "free_shipping": { "type": "boolean" },
+          "template": { "type": "keyword" }
+        }
+      },
+      "outcome": {
+        "properties": {
+          "status": { "type": "keyword" },
+          "order_id": { "type": "keyword" },
+          "revenue_recovered": { "type": "double" },
+          "outcome_at": { "type": "date" }
+        }
+      },
+      "sent_at": { "type": "date" }
+    }
+  }
+}
