@@ -81,12 +81,9 @@ python scripts/seed_sample_data.py
 
 1. Go to **AI Assistants → Agent Builder**
 2. Create new agent
-3. Import or paste contents of `agent_builder/serverless_agent.yaml`
-4. Configure:
-   - Model: `gpt-4o-mini`
-   - Temperature: `0.1`
-   - Max tokens: `1024`
-5. **Save** the agent
+3. Go to manage tool and create workflow tool.
+4. select the workflow you created.
+5. Go to agent and enable this tool.
 
 ### 6. Test Agent
 
