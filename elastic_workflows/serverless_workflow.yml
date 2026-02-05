@@ -72,7 +72,7 @@ steps:
 
   - name: decide_action
     type: inference.completion_stream
-    connector-id: ml
+    connector-id: .ml
     with:
       prompt: |
         You are an e-commerce recovery agent.
