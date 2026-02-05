@@ -71,23 +71,9 @@ steps:
       value: "{{get_customer.output.hits.hits.0._source.email}}"
 
   - name: decide_action
-    type: inference.completion_stream
-    connector-id: .ml
+    type: data.set
     with:
-      prompt: |
-        You are an e-commerce recovery agent.
-        Based on cart, checkout, and customer profile data,
-        choose ONE action from:
-        - payment_retry
-        - discount
-        - free_shipping
-        - reminder
-
-        Guardrails:
-        - No discounts for high fraud risk
-        - Prefer reminder for first-time abandonments
-
-        Respond with ONLY the action name.
+      value: "reminder"
 
   - name: set_action
     type: data.set
@@ -109,7 +95,7 @@ steps:
   - name: set_timestamp
     type: data.set
     with:
-      value: "{{$now}}"
+      value: "{{now}}"
 
   - name: record_attempt
     type: data.set
