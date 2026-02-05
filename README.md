@@ -1,102 +1,61 @@
-# AI Abandoned Cart Recovery Agent for an E-commerce Platform
+# 🛒 AI Abandoned Cart Recovery Agent
 
-End-to-end hackathon project that demonstrates a **multi-step AI agent** (Elastic Agent Builder) that:
+**Hackathon-ready showcase:** A multi-step AI agent built with **Elastic Agent Builder** that diagnoses why shoppers abandon carts and automatically triggers best recovery action—turning lost revenue into recovered sales.
 
-- Detects abandoned carts from event streams in **Elasticsearch**
-- Diagnoses the likely root cause by correlating cart/checkout/payment/performance signals
-- Finds similar historical cases and their recovery outcomes
-- Chooses a best recovery action (discount, free shipping, reminder, payment retry)
-- Triggers an automation hook (mock email/notification workflow)
+---
 
-## Architecture (high level)
+## Hackathon pitch (2 minutes)
 
-- **Elasticsearch** stores behavioral + operational data:
-  - `cart_events`, `checkout_events`, `payment_logs`, `session_metrics`, `recovery_history`, `customer_profiles`
-- **Custom Tools Server** (FastAPI) exposes the agent’s tools over HTTP (and provides an OpenAPI spec).
-- **Agent Orchestrator** (Python) demonstrates tool orchestration and multi-step flow.
-- **Elastic Agent Builder** uses the tool server’s OpenAPI tool definitions and runs the agent as a multi-step workflow.
+- **Problem:** E-commerce sites lose revenue when shoppers add items but never finish checkout. Generic "discount blasts" waste margin and miss root cause.
+- **Solution:** An AI agent that correlates cart, checkout, payment, and performance signals in Elasticsearch, diagnoses abandonment cause, learns from past recoveries, and chooses least-intrusive, highest-success action.
+- **Why Elastic Agent Builder:** The agent is defined as a serverless workflow with AI, guardrails, and learning—all orchestrated by Elastic AI Assistant.
+- **Business impact:** Higher recovery rates, fewer unnecessary discounts, and a self-improving automation loop.
 
-## Elasticsearch data model (indices)
-
-- **`cart_events`** (`mappings/cart_events.json`)
-  - Tracks add/remove/view cart events and cart value.
-- **`checkout_events`** (`mappings/checkout_events.json`)
-  - Tracks checkout progression (`step`, `status`), shipping costs, totals, payment method.
-- **`payment_logs`** (`mappings/payment_logs.json`)
-  - Tracks payment provider responses, failure codes, and retryability.
-- **`session_metrics`** (`mappings/session_metrics.json`)
-  - Tracks session performance signals (latency, error rate, apdex) to detect friction.
-- **`recovery_history`** (`mappings/recovery_history.json`)
-  - Stores recovery attempts, actions taken, and outcomes (used for similarity learning).
-- **`customer_profiles`** (`mappings/customer_profiles.json`)
-  - Stores customer contact info, segment, channel preference, and fraud risk.
-
-## Custom agent tools (clear inputs/outputs)
-
-All tools are exposed as HTTP endpoints in `src/tools_server/app.py` and automatically documented at:
-
-- `http://localhost:8000/openapi.json`
-
-Tool endpoints (operationIds match the names expected by Agent Builder):
-
-- **`detect_abandoned_carts`** (`POST /tools/detect_abandoned_carts`)
-  - Input: `lookback_minutes`, `abandonment_minutes`, `max_candidates`
-  - Output: list of abandoned cart candidates (sorted by `cart_value`)
-- **`analyze_abandonment`** (`POST /tools/analyze_abandonment`)
-  - Input: `cart_id`
-  - Output: diagnosis with `root_cause` + `signals` + evidence from correlated indices
-- **`get_customer_profile`** (`POST /tools/get_customer_profile`)
-  - Input: `customer_id`
-  - Output: profile (segment + channel preference + fraud risk + contact fields)
-- **`find_similar_abandonments`** (`POST /tools/find_similar_abandonments`)
-  - Input: `{root_cause, segment, cart_value}`
-  - Output: action success-rate stats + example historical documents
-- **`decide_recovery_action`** (`POST /tools/decide_recovery_action`)
-  - Input: cart + diagnosis + customer + similarity stats
-  - Output: selected action + rationale
-- **`trigger_recovery_action`** (`POST /tools/trigger_recovery_action`)
-  - Input: cart + customer + action
-  - Output: mock send result (`sent|skipped|failed`) + message_id
-- **`record_recovery_attempt`** (`POST /tools/record_recovery_attempt`)
-  - Input: cart + customer + diagnosis + action + sent_at
-  - Output: `recovery_id` stored in `recovery_history`
-
-## Repository structure
-
-- `agent_builder/`
-  - `agent.yaml` – agent definition (steps, tools, prompts) designed to be pasted/ported into Elastic Agent Builder
-  - `elastic_agent_builder_setup.md` – UI setup guide for Kibana Agent Builder
-- `mappings/` – index mappings (one file per index)
-- `queries/` – example Elasticsearch DSL queries used by the agent
-- `scripts/`
-  - `bootstrap_indices.py` – creates indices with mappings
-  - `seed_sample_data.py` – inserts small demo dataset
-- `src/`
-  - `es/client.py` – Elasticsearch client wrapper
-  - `models/schemas.py` – request/response schemas
-  - `tools_server/app.py` – custom tools API (OpenAPI)
-  - `agent/orchestrator.py` – multi-step agent runner (detect→diagnose→similarity→decide→act)
-  - `agent/policies.py` – recovery decision policy
-
-## Quickstart
-
-### 1) Start Elasticsearch (optional)
-
-If you don’t already have an Elasticsearch cluster, use Docker:
-
-```bash
-docker compose up -d
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Cart Events   │    │  Checkout Events │    │ Customer Profile│
+│   (ES Index)    │    │   (ES Index)    │    │   (ES Index)    │
+└────────┬────────┘    └────────┬─────────┘    └────────┬────────┘
+         │                      │                        │
+         └──────────────────────┼────────────────────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │  Serverless Workflow     │
+                    │                      │
+                    │ 1. Detect Carts      │
+                    │ 2. Analyze Signals   │
+                    │ 3. Get Customer     │
+                    │ 4. Decide Action     │
+                    │ 5. Trigger Recovery  │
+                    │ 6. Record Attempt    │
+                    └───────────┬───────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │  Recovery Actions     │
+                    │  - Payment Retry     │
+                    │  - Discount          │
+                    │  - Free Shipping     │
+                    │  - Reminder          │
+                    └──────────────────────┘
 ```
 
-### 2) Configure environment
+---
 
-Create a local `.env`:
+## 🚀 Quickstart (Elastic Serverless)
+
+### 1. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-### 3) Install Python dependencies
+Edit `.env` with your Serverless details:
+```env
+ES_SERVERLESS_ENDPOINT=https://your-project-id.es.us-east-1.aws.elastic-cloud.com
+ES_SERVERLESS_API_KEY=your-api-key
+```
+
+### 2. Install Dependencies
 
 ```bash
 python3 -m venv .venv
@@ -104,64 +63,102 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4) Bootstrap indices + seed data
+### 3. Bootstrap Elasticsearch
 
 ```bash
 python scripts/bootstrap_indices.py
 python scripts/seed_sample_data.py
 ```
 
-### 5) Start the custom tools server
+### 4. Import Workflow
 
-```bash
-uvicorn src.tools_server.app:app --reload --port 8000
+1. Open your Serverless Kibana
+2. Navigate to **Stack Management → Workflows**
+3. Import `elastic_workflows/serverless_workflow.yml`
+4. Enable the workflow
+
+### 5. Create Agent
+
+1. Go to **AI Assistants → Agent Builder**
+2. Create new agent
+3. Import or paste contents of `agent_builder/serverless_agent.yaml`
+4. Configure:
+   - Model: `gpt-4o-mini`
+   - Temperature: `0.1`
+   - Max tokens: `1024`
+5. **Save** the agent
+
+### 6. Test Agent
+
+```
+Detect abandoned carts in the last 24h, diagnose the top 3, and trigger the best recovery action.
 ```
 
-OpenAPI spec:
+---
 
-- `http://localhost:8000/openapi.json`
+## 📊 Project Documentation
 
-### 6) Run the orchestrator (demo multi-step agent flow)
+For detailed technical documentation including:
+- Elasticsearch index schemas and mappings
+- Serverless workflow implementation
+- Data flow diagrams
+- Deployment guides
+- Troubleshooting tips
 
-```bash
-python -m src.agent.orchestrator
+See: **[docs/serverless_documentation.md](docs/serverless_documentation.md)**
+
+---
+
+## 📁 Repository Structure
+
+```
+├── elastic_workflows/
+│   └── serverless_workflow.yml              # Serverless workflow
+├── agent_builder/
+│   ├── serverless_agent.yaml                 # Agent definition
+│   ├── serverless_demo_script.md            # Demo script
+│   └── serverless_setup_guide.md             # Setup guide
+├── docs/
+│   ├── serverless_documentation.md          # Complete technical docs
+│   └── serverless_workflow_diagram.md       # Workflow diagrams
+├── scripts/
+│   ├── bootstrap_indices.py                 # Create ES indices
+│   └── seed_sample_data.py                  # Sample data
+├── mappings/                               # ES index mappings
+├── queries/                                # Pre-built ES queries (legacy)
+└── .env.example                            # Environment template
 ```
 
-## How to use in Elastic Agent Builder
+---
 
-Follow `agent_builder/elastic_agent_builder_setup.md`.
+## 🔧 Development
 
-At a high level:
+### Add New Recovery Actions
 
-- Create an agent in **Kibana → Elastic AI Assistant → Agent Builder** (or equivalent Agent Builder experience)
-- Add tools from this server’s OpenAPI spec (`/openapi.json`)
-- Paste/port the prompts and step descriptions from `agent_builder/agent.yaml`
+1. Update the prompt in the workflow step
+2. Add corresponding HTTP endpoint configuration
+3. Update guardrails if needed
 
-## Hackathon requirements mapping
+---
 
-- **Custom multi-step AI agent using Elastic Agent Builder**
-  - See: `agent_builder/agent.yaml` + `agent_builder/elastic_agent_builder_setup.md`
-- **Agent must use custom tools**
-  - Implemented as HTTP tools in: `src/tools_server/app.py` (OpenAPI at `/openapi.json`)
-- **Agent must query and analyze data stored in Elasticsearch**
-  - Index mappings in: `mappings/`
-  - Sample DSL queries in: `queries/`
-  - Executed by tool implementations in: `src/tools_server/app.py`
-- **Automates a real business task (abandoned cart recovery)**
-  - Automation hooks in: `src/tools_server/app.py` (mock email/notification) and `src/agent/orchestrator.py`
+## 📈 Monitoring
 
-## Multi-step reasoning and tool orchestration (what to demo)
+Track recovery performance in Kibana:
+- Recovery rate by action type
+- Conversion by customer segment
+- Revenue recovered per campaign
 
-Two ways to demonstrate the workflow:
+---
 
-- **Elastic Agent Builder**
-  - Step prompts and tool ordering are defined in `agent_builder/agent.yaml`.
-- **Local orchestrator (reference implementation)**
-  - `python -m src.agent.orchestrator` executes:
-    - detect → analyze → profile → similarity → decide → trigger → record
+## 🤝 Contributing
 
-## Business impact (what this enables)
+1. Fork the repository
+2. Create a feature branch
+3. Update tests and documentation
+4. Submit a pull request
 
-- Reduces lost revenue by responding automatically to abandonment.
-- Improves customer experience by diagnosing *why* checkout failed and choosing the least-intrusive recovery action.
-- Learns from history by reusing patterns in `recovery_history` to pick higher-success actions.
+---
+
+## 📄 License
+
+MIT License - see LICENSE file for details
