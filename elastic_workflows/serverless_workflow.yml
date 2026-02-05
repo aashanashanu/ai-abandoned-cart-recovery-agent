@@ -1,0 +1,126 @@
+name: 🛒 Abandoned Cart Recovery
+description: Detects abandoned carts and triggers recovery actions
+enabled: true
+tags: ["ecommerce", "recovery"]
+triggers:
+  - type: manual
+
+steps:
+  - name: detect_carts
+    type: data.set
+    connector-id: elasticsearch-query
+    with:
+      index: cart_events
+      body:
+        size: 0
+        query:
+          bool:
+            must:
+              - range:
+                  "@timestamp":
+                    gte: "now-1440m"
+              - term:
+                  event_type: add
+            must_not:
+              - exists:
+                  field: checkout_completed
+        aggs:
+          carts:
+            terms:
+              field: cart_id
+              size: 20
+
+  - name: set_cart_id
+    type: data.set
+    with:
+      value: "{{detect_carts.output.aggregations.carts.buckets.0.key}}"
+
+  - name: analyze_abandonment
+    type: data.set
+    connector-id: elasticsearch-query
+    with:
+      index: checkout_events
+      body:
+        size: 10
+        query:
+          term:
+            cart_id: "{{set_cart_id.value}}"
+        sort:
+          - "@timestamp":
+              order: desc
+
+  - name: set_customer_id
+    type: data.set
+    with:
+      value: "{{analyze_abandonment.output.hits.hits.0._source.customer_id}}"
+
+  - name: get_customer
+    type: data.set
+    connector-id: elasticsearch-query
+    with:
+      index: customer_profiles
+      body:
+        size: 1
+        query:
+          term:
+            customer_id: "{{set_customer_id.value}}"
+
+  - name: set_email
+    type: data.set
+    with:
+      value: "{{get_customer.output.hits.hits.0._source.email}}"
+
+  - name: decide_action
+    type: inference.completion_stream
+    connector-id: ml
+    with:
+      prompt: |
+        You are an e-commerce recovery agent.
+        Based on cart, checkout, and customer profile data,
+        choose ONE action from:
+        - payment_retry
+        - discount
+        - free_shipping
+        - reminder
+
+        Guardrails:
+        - No discounts for high fraud risk
+        - Prefer reminder for first-time abandonments
+
+        Respond with ONLY the action name.
+
+  - name: set_action
+    type: data.set
+    with:
+      value: "{{decide_action.output}}"
+
+  - name: trigger_action
+    type: data.set
+    connector-id: http
+    with:
+      url: "https://api.example.com/send"
+      method: POST
+      headers:
+        Content-Type: application/json
+      body:
+        to: "{{set_email.value}}"
+        action: "{{set_action.value}}"
+
+  - name: set_timestamp
+    type: data.set
+    with:
+      value: "{{$now}}"
+
+  - name: record_attempt
+    type: data.set
+    connector-id: elasticsearch-index
+    with:
+      index: recovery_history
+      body:
+        cart_id: "{{set_cart_id.value}}"
+        customer_id: "{{set_customer_id.value}}"
+        action:
+          type: "{{set_action.value}}"
+        sent_at: "{{set_timestamp.value}}"
+        outcome:
+          status: "pending"
