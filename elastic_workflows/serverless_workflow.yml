@@ -6,107 +6,202 @@ triggers:
   - type: manual
 
 steps:
-  - name: detect_carts
-    type: data.set
-    connector-id: elasticsearch-query
+  - name: detect_abandoned_carts
+    type: elasticsearch.search
     with:
       index: cart_events
-      body:
-        size: 0
-        query:
-          bool:
-            must:
-              - range:
-                  "@timestamp":
-                    gte: "now-1440m"
-              - term:
-                  event_type: add
-            must_not:
-              - exists:
-                  field: checkout_completed
-        aggs:
-          carts:
-            terms:
-              field: cart_id
-              size: 20
+      query:
+        bool:
+          must:
+            - term:
+                event_type: add_to_cart
+            - range:
+                "@timestamp":
+                  gte: "now-1440m"
+          must_not:
+            - exists:
+                field: checkout_completed
 
-  - name: set_cart_id
-    type: data.set
-    with:
-      value: "{{detect_carts.output.aggregations.carts.buckets.0.key}}"
+  - name: analyze_abandonment_reasons
+    type: foreach
+    foreach: "{{steps.detect_abandoned_carts.output.hits.hits}}"
+    steps:
+      - name: check_checkout_attempts
+        type: elasticsearch.search
+        with:
+          index: checkout_events
+          query:
+            term:
+              cart_id: "{{foreach.item._source.cart_id}}"
+          size: 1
+          sort: "@timestamp"
 
-  - name: analyze_abandonment
-    type: data.set
-    connector-id: elasticsearch-query
-    with:
-      index: checkout_events
-      body:
-        size: 10
-        query:
-          term:
-            cart_id: "{{set_cart_id.value}}"
-        sort:
-          - "@timestamp":
-              order: desc
+      - name: conditionalStep
+        type: if
+        condition: ${{steps.check_checkout_attempts.output.hits.total.value>0 and steps.check_checkout_attempts.output.hits.hits[0]._source.status!= "completed"}}
+        steps:
+          - name: check_payment_logs
+            type: elasticsearch.search
+            with:
+              index: payment_logs
+              query:
+                term:
+                  cart_id: "{{foreach.item._source.cart_id}}"
+              size: 1
+              sort: "@timestamp"
 
-  - name: set_customer_id
-    type: data.set
-    with:
-      value: "{{analyze_abandonment.output.hits.hits.0._source.customer_id}}"
+          - name: add_abandonment_reason
+            type: data.set
+            with:
+              cart_id: "{{foreach.item._source.cart_id}}"
+              cart_value: "{{foreach.item._source.cart_value}}"
+              customer_id: "{{foreach.item._source.customer_id}}"
+              last_activity: "{{foreach.item._source.timestamp}}"
+              abandonment_reason: >-
+                {% assign payment = steps.check_payment_logs.output.hits.hits[0]._source %}
+                {% assign checkout = steps.check_checkout_attempts.output.hits.hits[0]._source %}
+                {% if payment and payment.status == "failed" %}
+                  payment_failure
+                {% else %}
+                  {% if checkout and checkout.step == "shipping" and checkout.status != "completed" %}
+                    shipping_issue
+                  {% else %}
+                    browsing_abandonment
+                  {% endif %}
+                {% endif %}
 
-  - name: get_customer
-    type: data.set
-    connector-id: elasticsearch-query
-    with:
-      index: customer_profiles
-      body:
-        size: 1
-        query:
-          term:
-            customer_id: "{{set_customer_id.value}}"
+          - name: fetch_customer_profile
+            type: elasticsearch.search
+            with:
+              index: customer_profiles
+              query:
+                term:
+                  customer_id: "{{foreach.item._source.customer_id}}"
+              size: 1
 
-  - name: set_email
-    type: data.set
-    with:
-      value: "{{get_customer.output.hits.hits.0._source.email}}"
+          - name: set_customer_data
+            type: data.set
+            with:
+              customer_segment: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.segment}}"
+              fraud_risk: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.fraud_risk }}"
+              preferred_channel: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.preferred_channel}}"
+              email: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.email}}"
+              phone: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.phone}}"
+              push_token: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.push_token}}"
+              cart_id: "{{steps.add_abandonment_reason.output.cart_id}}"
+              cart_value: "{{steps.add_abandonment_reason.output.cart_value}}"
+              customer_id: "{{steps.add_abandonment_reason.output.customer_id}}"
+              abandonment_reason: "{{steps.add_abandonment_reason.output.abandonment_reason}}"
+              last_activity: "{{steps.add_abandonment_reason.output.last_activity}}"
 
-  - name: decide_action
-    type: data.set
-    with:
-      value: "reminder"
+          - name: set_recovery_action
+            type: data.set
+            with:
+              action_type: >-
+                {% if steps.set_customer_data.output.customer_segment == "vip" and steps.set_customer_data.output.abandonment_reason == "payment_failure" %}
+                  payment_retry
+                {% else %}
+                  {% if steps.set_customer_data.output.customer_segment == "vip" and steps.set_customer_data.output.cart_value > 500 %}
+                    discount
+                  {% else %}
+                    {% if steps.set_customer_data.output.customer_segment == "vip" %}
+                      free_shipping
+                    {% else %}
+                      {% if steps.set_customer_data.output.fraud_risk == "high" and steps.set_customer_data.output.abandonment_reason == "payment_failure" %}
+                        blocked
+                      {% else %}
+                        {% if steps.set_customer_data.output.fraud_risk == "high" %}
+                          reminder_only
+                        {% else %}
+                          {% if steps.set_customer_data.output.customer_segment == "standard" and steps.set_customer_data.output.abandonment_reason == "payment_failure" %}
+                            payment_retry
+                          {% else %}
+                            {% if steps.set_customer_data.output.customer_segment == "standard" and steps.set_customer_data.output.cart_value > 300 %}
+                              discount
+                            {% else %}
+                              {% if steps.set_customer_data.output.customer_segment == "standard" and steps.set_customer_data.output.abandonment_reason == "shipping_issue" %}
+                                free_shipping
+                              {% else %}
+                                reminder
+                              {% endif %}
+                            {% endif %}
+                          {% endif %}
+                        {% endif %}
+                      {% endif %}
+                    {% endif %}
+                  {% endif %}
+                {% endif %}
 
-  - name: set_action
-    type: data.set
-    with:
-      value: "{{decide_action.output}}"
+              discount_percent: >-
+                {% if steps.set_customer_data.output.customer_segment == "vip" and steps.set_customer_data.output.cart_value > 500 %}
+                  15
+                {% else %}
+                  {% if steps.set_customer_data.output.customer_segment == "standard" and steps.set_customer_data.output.cart_value > 300 %}
+                    10
+                  {% else %}
+                    0
+                  {% endif %}
+                {% endif %}
 
-  - name: trigger_action
-    type: data.set
-    connector-id: http
-    with:
-      url: "https://api.example.com/send"
-      method: POST
-      headers:
-        Content-Type: application/json
-      body:
-        to: "{{set_email.value}}"
-        action: "{{set_action.value}}"
+              free_shipping: >-
+                {% if steps.set_customer_data.output.customer_segment == "vip" and steps.set_customer_data.output.abandonment_reason != "payment_failure" and steps.set_customer_data.output.cart_value <= 500 %}
+                  true
+                {% else %}
+                  {% if steps.set_customer_data.output.customer_segment == "standard" and steps.set_customer_data.output.abandonment_reason == "shipping_issue" %}
+                    true
+                  {% else %}
+                    false
+                  {% endif %}
+                {% endif %}
+              cart_id: "{{foreach.item._source.cart_id}}"
+              customer_id: "{{foreach.item._source.customer_id}}"
+              email: "{{foreach.item._source.email}}"
+              phone: "{{foreach.item._source.phone}}"
+              push_token: "{{foreach.item._source.push_token}}"
+              customer_segment: "{{foreach.item._source.customer_segment}}"
+              abandonment_reason: "{{foreach.item._source.abandonment_reason}}"
+              last_activity: "{{foreach.item._source.last_activity}}"
 
-  - name: set_timestamp
-    type: data.set
-    with:
-      value: "{{now}}"
+          - name: send_notification
+            type: data.set
+            with:
+              url: "https://api.example.com/notifications"
+              method: POST
+              headers:
+                Content-Type: application/json
+              body:
+                action_type: "{{steps.set_recovery_action.output.action_type}}"
+                cart_id: "{{steps.set_recovery_action.output.cart_id}}"
+                customer_id: "{{steps.set_recovery_action.output.customer_id}}"
+                email: "{{steps.set_recovery_action.output.email}}"
+                phone: "{{steps.set_recovery_action.output.phone}}"
+                push_token: "{{steps.set_recovery_action.output.push_token}}"
+                discount_percent: "{{foreach.item._source.discount_percent}}"
+                free_shipping: "{{steps.set_recovery_action.output.free_shipping}}"
+                customer_segment: "{{steps.set_recovery_action.output.customer_segment}}"
+                abandonment_reason: "{{steps.set_recovery_action.output.abandonment_reason}}"
+                last_activity: "{{steps.set_recovery_action.output.last_activity}}"
 
-  - name: record_attempt
-    type: data.set
-    connector-id: elasticsearch-index
-    with:
-      index: recovery_history
-      body:
-        cart_id: "{{set_cart_id.value}}"
-        customer_id: "{{set_customer_id.value}}"
-        action:
-          type: "{{set_action.value}}"
-        sent_at: "{{set_timestamp.value}}"
-        outcome:
-          status: "pending"
+          - name: record_recovery_attempt
+            type: elasticsearch.index
+            with:
+              index: recovery_history
+              document:
+                "@timestamp": "{{now}}"
+                recovery_id: "{{foreach.item._source.cart_id}}-{{now}}"
+                cart_id: "{{steps.set_recovery_action.output.cart_id}}"
+                customer_id: "{{steps.set_recovery_action.output.customer_id}}"
+                segment: "{{steps.set_recovery_action.output.customer_segment}}"
+                cart_value: "{{steps.set_recovery_action.output.cart_value}}"
+                currency: "USD"
+                diagnosis:
+                  root_cause: "{{steps.set_recovery_action.output.abandonment_reason}}"
+                  signals: ["{{steps.set_recovery_action.output.customer_segment}}", "{{steps.set_recovery_action.output.abandonment_reason}}"]
+                action:
+                  type: "{{steps.set_recovery_action.output.action_type}}"
+                  channel: "{{steps.set_customer_data.output.preferred_channel}}"
+                  discount_percent: "{{steps.set_recovery_action.output.discount_percent}}"
+                  free_shipping: "{{steps.set_recovery_action.output.free_shipping}}"
+                outcome:
+                  status: "pending"
+                sent_at: "{{now}}"
