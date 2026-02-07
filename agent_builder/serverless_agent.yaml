@@ -5,14 +5,6 @@ temperature: 0.1
 max_tokens: 1024
 tool_choice: auto
 
-guardrails:
-  - name: no_discounts_for_high_fraud
-    description: Block discount/free_shipping for high fraud risk customers
-  - name: prefer_retry_for_payment_failure
-    description: Prefer payment_retry for retryable payment failures
-  - name: perf_latency_no_discount
-    description: Use reminder for performance latency issues
-
 workflow:
   steps:
     - name: recover_cart

@@ -1,6 +1,17 @@
 # 🛒 AI Abandoned Cart Recovery Agent
 
-**Hackathon-ready showcase:** A multi-step AI agent built with **Elastic Agent Builder** that diagnoses why shoppers abandon carts and automatically triggers best recovery action—turning lost revenue into recovered sales.
+A multi-step AI agent that automatically detects abandoned shopping carts and triggers personalized recovery actions using Elastic Agent Builder with Elasticsearch workflows.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## 🎯 Features
+
+- **🤖 AI-Powered Detection**: Automatically identifies abandoned carts from real-time data
+- **🎯 Smart Recovery**: Context-aware action selection based on customer segments
+- **📊 Real-Time Analytics**: Complete recovery history and performance tracking
+- **🛡️ Business Guardrails**: Risk-aware decision making with fraud protection
+- **⚡ Serverless Ready**: Built for Elastic Serverless deployment
+- **🔧 Extensible**: Easy to add new recovery strategies and integrations
 
 ---
 
@@ -81,9 +92,9 @@ python scripts/seed_sample_data.py
 
 1. Go to **AI Assistants → Agent Builder**
 2. Create new agent
-3. Go to manage tool and create workflow tool.
-4. select the workflow you created.
-5. Go to agent and enable this tool.
+3. Go to **Manage Tools** and create workflow tool
+4. Select the workflow you imported
+5. Go to agent and enable this tool
 
 ### 6. Test Agent
 
@@ -113,17 +124,14 @@ See: **[docs/serverless_documentation.md](docs/serverless_documentation.md)**
 │   └── serverless_workflow.yml              # Serverless workflow
 ├── agent_builder/
 │   ├── serverless_agent.yaml                 # Agent definition
-│   ├── serverless_demo_script.md            # Demo script
-│   └── serverless_setup_guide.md             # Setup guide
-├── docs/
-│   ├── serverless_documentation.md          # Complete technical docs
-│   └── serverless_workflow_diagram.md       # Workflow diagrams
+│   └── serverless_demo_script.md            # Demo script
+├── elastic_workflows/
+│   └── serverless_workflow.yml              # Serverless workflow
 ├── scripts/
 │   ├── bootstrap_indices.py                 # Create ES indices
 │   └── seed_sample_data.py                  # Sample data
 ├── mappings/                               # ES index mappings
-├── queries/                                # Pre-built ES queries (legacy)
-└── .env.example                            # Environment template
+└── queries/                                # Pre-built ES queries (legacy)
 ```
 
 ---
