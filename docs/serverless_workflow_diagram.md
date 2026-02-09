@@ -21,44 +21,29 @@ flowchart TD
     N -->|Yes| C
     N -->|No| O[End]
 
-    subgraph "Decision Logic in Set Recovery Action"
-        direction TB
-        K1[Customer Segment] --> K2[Abandonment Reason]
-        K2 --> K3[Cart Value]
-        K3 --> K4[Fraud Risk]
-        K4 --> K5[Action Type]
-        
-        K5 --> P1[Payment Retry]
-        K5 --> P2[Discount 15%]
-        K5 --> P3[Free Shipping]
-        K5 --> P4[Blocked]
-        K5 --> P5[Reminder Only]
-        K5 --> P6[Payment Retry]
-        K5 --> P7[Discount 10%]
-        K5 --> P8[Free Shipping]
-        K5 --> P9[Reminder]
-    end
-
-    subgraph "Action Conditions"
-        direction LR
-        Q1[VIP + Payment Failure] --> P1
-        Q2[VIP + Cart > $500] --> P2
-        Q3[VIP + Shipping Issue] --> P3
-        Q4[High Fraud + Payment Failure] --> P4
-        Q5[High Fraud + Other] --> P5
-        Q6[Standard + Payment Failure] --> P6
-        Q7[Standard + Cart > $300] --> P7
-        Q8[Standard + Shipping Issue] --> P8
-        Q9[Default Cases] --> P9
-    end
+    K --> K1[Customer Segment]
+    K1 --> K2[Abandonment Reason]
+    K2 --> K3[Cart Value]
+    K3 --> K4[Fraud Risk]
+    K4 --> K5[Action Type]
+    
+    K5 --> P1[Payment Retry]
+    K5 --> P2[Discount 15%]
+    K5 --> P3[Free Shipping]
+    K5 --> P4[Blocked]
+    K5 --> P5[Reminder Only]
+    K5 --> P6[Payment Retry]
+    K5 --> P7[Discount 10%]
+    K5 --> P8[Free Shipping]
+    K5 --> P9[Reminder]
 
     classDef default fill:#f9f9f9,stroke:#333,color:#333
     classDef decision fill:#e1f5e3,stroke:#333,color:#333
     classDef action fill:#ffeb3b,stroke:#333,color:#333
-    classDef condition fill:#e3f2fd,stroke:#333,color:#333
+    classDef process fill:#e3f2fd,stroke:#333,color:#333
     class E,N decision
     class P1,P2,P3,P4,P5,P6,P7,P8,P9 action
-    class Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9 condition
+    class K1,K2,K3,K4,K5 process
 ```
 
 ## 📋 Workflow Steps
