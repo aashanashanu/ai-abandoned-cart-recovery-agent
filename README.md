@@ -121,17 +121,20 @@ See: **[docs/serverless_documentation.md](docs/serverless_documentation.md)**
 
 ```
 ├── elastic_workflows/
-│   └── serverless_workflow.yml              # Serverless workflow
+│   └── serverless_workflow.yml              # Complete serverless workflow with nested logic
 ├── agent_builder/
 │   ├── serverless_agent.yaml                 # Agent definition
 │   └── serverless_demo_script.md            # Demo script
-├── elastic_workflows/
-│   └── serverless_workflow.yml              # Serverless workflow
 ├── scripts/
 │   ├── bootstrap_indices.py                 # Create ES indices
 │   └── seed_sample_data.py                  # Sample data
 ├── mappings/                               # ES index mappings
-└── queries/                                # Pre-built ES queries (legacy)
+├── queries/                                # Pre-built ES queries (legacy - now in workflow)
+└── docs/                                   # Technical documentation
+    ├── serverless_documentation.md         # Complete architecture docs
+    ├── serverless_workflow_diagram.md      # Workflow flow and decision logic
+    ├── requirements_analysis.md            # Business requirements
+    └── sample_data_reference.md            # Data structure reference
 ```
 
 ---

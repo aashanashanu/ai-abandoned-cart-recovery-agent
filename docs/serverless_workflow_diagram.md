@@ -4,100 +4,131 @@
 
 ```mermaid
 flowchart TD
-    A[Start] --> B[Detect Carts]
-    B --> C[Analyze Abandonment]
-    C --> D[Get Customer Profile]
-    D --> E[Decide Action]
-    E --> F[Trigger Recovery Action]
-    F --> G[Record Attempt]
-    G --> H[End]
+    A[Start] --> B[Detect Abandoned Carts]
+    B --> C[For Each Cart: Analyze Abandonment]
+    C --> D[Check Checkout Attempts]
+    D --> E{Checkout Exists?}
+    E -->|Yes| F[Check Payment Logs]
+    E -->|No| G[Add Abandonment Reason: browsing_abandonment]
+    F --> H[Add Abandonment Reason]
+    H --> I[Fetch Customer Profile]
+    G --> I
+    I --> J[Set Customer Data]
+    J --> K[Set Recovery Action]
+    K --> L[Send Notification Data]
+    L --> M[Record Recovery Attempt]
+    M --> N{More Carts?}
+    N -->|Yes| C
+    N -->|No| O[End]
 
-    subgraph "Decision Logic"
+    subgraph "Decision Logic in Set Recovery Action"
         direction LR
-        E --| "VIP + Payment Failure" -->| "Payment Retry"
-        E --| "VIP + High Value (>500)" -->| "Discount"
-        E --| "VIP + Other Issues" -->| "Free Shipping"
-        E --| "High Fraud Risk + Payment Failure" -->| "Blocked"
-        E --| "High Fraud Risk + Other" -->| "Reminder Only"
-        E --| "Standard + Payment Failure" -->| "Payment Retry"
-        E --| "Standard + High Value (>300)" -->| "Discount"
-        E --| "Standard + Shipping Issues" -->| "Free Shipping"
-        E --| "Standard + Other Issues" -->| "Reminder"
-        E --| "Default Cases" -->| "Reminder"
+        K1[Customer Segment] --> K2[Abandonment Reason]
+        K2 --> K3[Cart Value]
+        K3 --> K4[Fraud Risk]
+        K4 --> K5[Action Type]
+        
+        K5 -->|VIP + Payment Failure| P1[Payment Retry]
+        K5 -->|VIP + >$500| P2[Discount 15%]
+        K5 -->|VIP + Shipping Issue| P3[Free Shipping]
+        K5 -->|High Fraud + Payment Failure| P4[Blocked]
+        K5 -->|High Fraud + Other| P5[Reminder Only]
+        K5 -->|Standard + Payment Failure| P6[Payment Retry]
+        K5 -->|Standard + >$300| P7[Discount 10%]
+        K5 -->|Standard + Shipping Issue| P8[Free Shipping]
+        K5 -->|Default| P9[Reminder]
+    end
 
-    classDef fill:#f9f9f9,stroke:#333,color:#333
-    classDef fill:#e1f5e3,stroke:#333,color:#333
-
-    classDef fill:#ffeb3b,stroke:#333,color:#333
+    classDef default fill:#f9f9f9,stroke:#333,color:#333
+    classDef decision fill:#e1f5e3,stroke:#333,color:#333
+    classDef action fill:#ffeb3b,stroke:#333,color:#333
+    class E,N decision
+    class P1,P2,P3,P4,P5,P6,P7,P8,P9 action
 ```
 
 ## 📋 Workflow Steps
 
-### A. Detect Carts
+### A. Detect Abandoned Carts
 **Purpose**: Find abandoned carts from last 24 hours
-**Input**: Time range, cart events
+**Input**: Time range (now-1440m), cart events
 **Output**: List of abandoned cart IDs
-**Key Fields**: `@timestamp`, `event_type`, `cart_id`
+**Query**: cart_events index with event_type=add_to_cart, no checkout_completed field
+**Key Fields**: `@timestamp`, `event_type`, `cart_id`, `customer_id`, `cart_value`
 
-### B. Analyze Abandonment
-**Purpose**: Diagnose abandonment reasons for each cart
-**Input**: Cart ID, checkout events
-**Output**: Root cause analysis
-**Key Fields**: `step`, `status`, `issues`
+### B. Analyze Abandonment Reasons (Foreach Loop)
+**Purpose**: For each abandoned cart, diagnose abandonment reasons
+**Input**: Cart ID from detection step
+**Output**: Root cause analysis and customer data
 
-### C. Get Customer Profile
-**Purpose**: Retrieve customer segmentation data
-**Input**: Customer ID from analysis
-**Output**: Customer profile with segment and risk level
-**Key Fields**: `segment`, `fraud_risk`, `lifetime_value`
+#### B1. Check Checkout Attempts
+**Purpose**: Determine if customer started checkout
+**Query**: checkout_events index by cart_id
+**Output**: Latest checkout attempt with step and status
 
-### D. Decide Action
-**Purpose**: Intelligent action selection based on context
-**Input**: Customer profile, abandonment analysis, cart data
-**Output**: Recovery action type
-**Decision Factors**:
-- Customer segment (VIP, Standard, High Fraud Risk)
-- Abandonment cause (Payment Failure, Shipping Issues, Performance)
-- Cart value and items
+#### B2. Conditional Step
+**Purpose**: Only proceed if checkout attempts exist and weren't completed
+**Condition**: checkout attempts > 0 AND status != "completed"
 
-### E. Trigger Recovery Action
-**Purpose**: Execute recovery action via external API
-**Input**: Action type, customer contact, cart details
-**Output**: HTTP request to recovery service
-**Key Fields**: `action.type`, `channel`, `to`, `cart_id`
+#### B3. Check Payment Logs
+**Purpose**: Identify payment failures
+**Query**: payment_logs index by cart_id
+**Output**: Latest payment attempt with status and failure details
 
-### F. Record Attempt
-**Purpose**: Log recovery attempt for analytics and learning
-**Input**: Action details, outcome
-**Output**: Recovery history document
-**Key Fields**: `action`, `outcome`, `revenue_recovered`, `sent_at`
+#### B4. Add Abandonment Reason
+**Purpose**: Determine root cause using Liquid templating
+**Logic**:
+- If payment.status == "failed" → "payment_failure"
+- If checkout.step == "shipping" AND status != "completed" → "shipping_issue"
+- Default → "browsing_abandonment"
+
+#### B5. Fetch Customer Profile
+**Purpose**: Get customer segmentation and preferences
+**Query**: customer_profiles index by customer_id
+**Output**: Customer segment, fraud risk, contact details
+
+#### B6. Set Customer Data
+**Purpose**: Consolidate all relevant data for decision making
+**Output**: Combined dataset of cart, customer, and abandonment data
+
+#### B7. Set Recovery Action
+**Purpose**: Complex decision logic for action selection
+**Factors**: Customer segment, fraud risk, cart value, abandonment reason
+**Output**: Action type, discount percentage, free shipping flag
+
+#### B8. Send Notification
+**Purpose**: Prepare HTTP request data (uses data.set, not actual HTTP call)
+**Output**: Structured notification payload for external API
+
+#### B9. Record Recovery Attempt
+**Purpose**: Log recovery attempt for analytics
+**Action**: Index document to recovery_history
+**Output**: Complete recovery record with timestamp and status
 
 ---
 
 ## 🎯 Decision Logic Matrix
 
-### Customer Segments
+### Action Types & Conditions
 
-| Segment | Payment Failure | Shipping Issues | High Value | Default |
-|----------|-----------------|-----------------|------------|-----------|
-| **VIP** | Payment Retry | Free Shipping | Discount | Free Shipping |
-| **High Fraud Risk** | Blocked | Reminder | Reminder | Reminder |
-| **Standard** | Payment Retry | Free Shipping | Discount | Reminder |
-
-### Action Types
-
-- **payment_retry**: Alternative payment method attempt
-- **free_shipping**: Remove shipping cost barrier
-- **reminder**: Gentle reminder notification
-- **discount**: Percentage discount offer
-- **blocked**: No action due to fraud risk
+| Customer Segment | Abandonment Reason | Cart Value | Action | Details |
+|------------------|-------------------|------------|---------|---------|
+| **VIP** | payment_failure | Any | payment_retry | Alternative payment method |
+| **VIP** | Any | >$500 | discount | 15% discount |
+| **VIP** | shipping_issue | Any | free_shipping | Remove shipping barrier |
+| **VIP** | Other | ≤$500 | free_shipping | VIP benefit |
+| **High Fraud Risk** | payment_failure | Any | blocked | No action |
+| **High Fraud Risk** | Any | Any | reminder_only | Gentle reminder only |
+| **Standard** | payment_failure | Any | payment_retry | Alternative payment method |
+| **Standard** | Any | >$300 | discount | 10% discount |
+| **Standard** | shipping_issue | Any | free_shipping | Remove shipping barrier |
+| **Standard** | Other | Any | reminder | Standard reminder |
 
 ### Success Indicators
 
-- **High Success**: VIP + Payment Retry (85%)
-- **Medium Success**: Standard + Free Shipping (65%)
-- **Low Success**: Standard + Reminder (40%)
-- **Blocked**: High Fraud Risk + Reminder (25%)
+- **High Success**: VIP + Payment Retry (85% estimated)
+- **Medium Success**: Standard + Free Shipping (65% estimated)
+- **Low Success**: Standard + Reminder (40% estimated)
+- **Blocked**: High Fraud Risk (0% - no action taken)
 
 ---
 
@@ -105,37 +136,78 @@ flowchart TD
 
 ### Elasticsearch Queries
 
+#### Detect Abandoned Carts
 ```json
 {
-  "detect_carts": {
-    "index": "cart_events",
-    "query": {
-      "bool": {
-        "must": [
-          {"range": {"@timestamp": {"gte": "now-1440m"}}},
-          {"term": {"event_type": "add"}}
-        ],
-        "must_not": [
-          {"exists": {"field": "checkout_completed"}}
-        ]
-      }
-    },
-    "aggs": {
-      "carts": {
-        "terms": {"field": "cart_id", "size": 20}
-      }
+  "index": "cart_events",
+  "query": {
+    "bool": {
+      "must": [
+        {"term": {"event_type": "add_to_cart"}},
+        {"range": {"@timestamp": {"gte": "now-1440m"}}}
+      ],
+      "must_not": [
+        {"exists": {"field": "checkout_completed"}}
+      ]
     }
   }
+}
+```
+
+#### Checkout Analysis
+```json
+{
+  "index": "checkout_events",
+  "query": {
+    "term": {"cart_id": "{{cart_id}}"}
+  },
+  "size": 1,
+  "sort": "@timestamp"
+}
+```
+
+#### Payment Logs
+```json
+{
+  "index": "payment_logs",
+  "query": {
+    "term": {"cart_id": "{{cart_id}}"}
+  },
+  "size": 1,
+  "sort": "@timestamp"
+}
+```
+
+#### Customer Profile
+```json
+{
+  "index": "customer_profiles",
+  "query": {
+    "term": {"customer_id": "{{customer_id}}"}
+  },
+  "size": 1
 }
 ```
 
 ### Data Flow
 
 ```
-Cart Events → Abandonment Detection → Customer Profile Lookup → Action Decision → Recovery Execution → History Recording
-      ↓                    ↓                    ↓              ↓
-   Time-based           Segment-based          Context-aware      API-based        Analytics
-   Aggregation           Profile retrieval        Rule-based        HTTP POST       Index update
+Cart Events → Detect Abandonment (24h window) → For Each Cart:
+      ↓                    ↓                         ↓
+   Time-based           Check Checkout          If checkout exists:
+   Aggregation           attempts by cart        → Check payment logs
+      ↓                    ↓                         ↓
+   Find carts            Determine if            Determine abandonment
+   with add_to_cart      checkout started         reason (payment/shipment/browsing)
+      ↓                    ↓                         ↓
+   No checkout           Fetch customer          Apply decision logic:
+   completed field        profile & segment        → VIP: payment_retry/discount/free_shipping
+      ↓                    ↓                         → Standard: payment_retry/discount/free_shipping
+   Loop through          Set customer data        → High Fraud: blocked/reminder_only
+   each cart             → Set recovery action    → Default: reminder
+      ↓                    ↓                         ↓
+   Prepare notification  Record attempt          Send notification data
+   data payload          to recovery_history     → Index recovery history
 ```
 
 ### Serverless Benefits

@@ -74,14 +74,35 @@ Populates indices with sample data:
 
 ### 4. Serverless Workflow (`/elastic_workflows/serverless_workflow.yml`)
 
-Single workflow file that executes:
+Single workflow file that executes a comprehensive abandoned cart recovery process:
 
-1. **detect_carts**: Query cart_events for abandoned carts
-2. **analyze_abandonment**: Correlate with checkout_events
-3. **get_customer**: Fetch customer profile
-4. **decide_action**: AI chooses recovery strategy
-5. **trigger_action**: Send recovery via HTTP
-6. **record_attempt**: Store in recovery_history
+#### Main Steps:
+1. **detect_abandoned_carts**: Query cart_events for carts from last 24 hours with add_to_cart events but no checkout completion
+2. **analyze_abandonment_reasons**: For each abandoned cart, execute nested analysis:
+   - **check_checkout_attempts**: Query checkout_events for the cart
+   - **conditionalStep**: If checkout attempts exist and weren't completed:
+     - **check_payment_logs**: Query payment_logs for payment failures
+     - **add_abandonment_reason**: Determine root cause (payment_failure, shipping_issue, browsing_abandonment)
+     - **fetch_customer_profile**: Get customer segmentation data
+     - **set_customer_data**: Consolidate all customer and cart information
+     - **set_recovery_action**: Complex decision logic for action selection
+     - **send_notification**: Prepare HTTP request data
+     - **record_recovery_attempt**: Index recovery attempt to recovery_history
+
+#### Decision Logic:
+The workflow uses sophisticated conditional logic based on:
+- **Customer Segment**: VIP, Standard
+- **Fraud Risk**: High, Normal
+- **Cart Value**: >$500 (VIP), >$300 (Standard)
+- **Abandonment Reason**: payment_failure, shipping_issue, browsing_abandonment
+
+#### Action Types:
+- **payment_retry**: For payment failures (VIP/Standard segments)
+- **discount**: 15% for VIP >$500, 10% for Standard >$300
+- **free_shipping**: For shipping issues or VIP customers
+- **reminder**: Default action for browsing abandonment
+- **blocked**: No action for high fraud risk with payment failure
+- **reminder_only**: For high fraud risk customers
 
 ### 5. Agent Definition (`/agent_builder/serverless_agent.yaml`)
 
@@ -94,15 +115,18 @@ Configures AI agent with:
 
 ```
 Cart Events ──┐
-               ├──► Detect Abandonment
+               ├──► Detect Abandonment (24h window)
 Checkout Events ─┤
-               ├──► Analyze Signals
+               ├──► For Each Cart: Analyze abandonment reason
 Customer Data ──┤
-               ├──► Decide Action
+               ├──► Check checkout attempts → payment logs
 Payment Logs ────┤
-               ├──► Trigger Recovery
+               ├──► Determine root cause (payment/shipment/browsing)
 History Data ────┘
-               └──► Record Attempt
+               ├──► Fetch customer profile & segment
+               ├──► Apply complex decision logic
+               ├──► Prepare notification data
+               └──► Record recovery attempt
 ```
 
 ## Key Features
@@ -126,9 +150,12 @@ History Data ────┘
 - Size limits
 
 ### Guardrails
-- No discounts for high fraud risk
-- Prefer payment_retry for failures
-- Use reminder for performance issues
+- No discounts for high fraud risk customers
+- Block actions for high fraud risk + payment failure
+- Prefer payment_retry for payment failures
+- Use reminder_only for high fraud risk customers
+- VIP customers get preferential treatment (free shipping, higher discounts)
+- Cart value thresholds trigger different actions
 
 ## Deployment
 
