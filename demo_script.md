@@ -16,15 +16,15 @@
 **Presenter Script**: "Here's our decision matrix - you can see how VIP customers get premium treatment like payment retries and discounts, while high fraud risk customers get guardrails like blocked actions."
 
 **Key Sections**:
-- Decision Logic Matrix (lines 81-85)
-- Action Types (lines 89-93)
-- Complete flow diagram (lines 6-26)
+- Decision Logic Matrix (lines 111-125)
+- Action Types & Conditions (lines 113-125)
+- Complete flow diagram (lines 5-62)
 
 ### 2. Serverless Workflow
 **File**: `elastic_workflows/serverless_workflow.yml`
 **Presenter Script**: "This is the actual implementation - the Jinja2 logic that evaluates customer segment, abandonment step, and cart value to select the optimal action."
 
-**Key Section**: Decision logic (lines 81-109)
+**Key Section**: Decision logic (lines 97-156)
 
 ### 3. Sample Data Reference
 **File**: `docs/sample_data_reference.md`
