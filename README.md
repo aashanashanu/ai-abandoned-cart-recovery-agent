@@ -15,6 +15,38 @@ A multi-step AI agent that automatically detects abandoned shopping carts and tr
 
 ---
 
+## 📖 Agent Overview
+
+The AI Abandoned Cart Recovery Agent is an intelligent e-commerce automation solution that addresses the critical problem of abandoned shopping carts, which costs businesses billions in lost revenue annually. Traditional approaches rely on generic discount blasts that waste margins and fail to address root causes, while this agent uses sophisticated AI-driven analysis to deliver personalized recovery strategies.
+
+### Problem Solved
+
+The agent solves the challenge of ineffective cart recovery by automatically detecting abandoned carts, diagnosing abandonment reasons, and selecting optimal recovery actions based on customer segmentation, fraud risk assessment, and cart value. Instead of one-size-fits-all solutions, it provides context-aware responses that balance revenue recovery with business risk management.
+
+### Features Used
+
+The solution leverages Elastic's complete serverless platform, including:
+
+- **Elasticsearch** for real-time data correlation across cart events, checkout attempts, payment logs, and customer profiles
+- **Elastic Workflows** engine orchestrates a complex multi-step process with conditional logic and foreach loops
+- **AI Assistant** provides natural language interface and intelligent decision-making
+- **Liquid templating** for dynamic content transformation
+- **Recovery history** maintains a complete audit trail
+
+### Key Highlights
+
+The **serverless workflow orchestration** was particularly impressive - the ability to create sophisticated nested logic with foreach loops that process each abandoned cart individually while maintaining performance at scale.
+
+The **AI Agent Builder integration** was another standout feature, allowing the complex workflow to be executed through simple natural language commands while maintaining business guardrails and safety constraints.
+
+### Development Challenges
+
+The main challenge was implementing the complex decision matrix that considers multiple variables (customer segment, abandonment reason, cart value, fraud risk) to select the optimal recovery action. This required careful design of the workflow's conditional logic and extensive testing to ensure all scenarios were handled correctly.
+
+The result is a production-ready system that demonstrates how AI, workflows, and real-time analytics can work together to solve complex business problems with intelligence and efficiency.
+
+---
+
 ## Hackathon pitch (2 minutes)
 
 - **Problem:** E-commerce sites lose revenue when shoppers add items but never finish checkout. Generic "discount blasts" waste margin and miss root cause.
