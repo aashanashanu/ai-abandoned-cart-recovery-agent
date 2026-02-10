@@ -3,7 +3,44 @@
 ## 🎙️ Presenter Script (Verbal Communication)
 
 ### **Opening (30 seconds)**
-"Today I'll show you our intelligent abandoned cart recovery system that automatically decides the best recovery action based on customer segment, abandonment reason, and cart value. Let me walk through the key documents first, then run a single command that demonstrates all 5 recovery scenarios."
+"Today I'll show you our intelligent abandoned cart recovery system built entirely on Elastic's serverless platform. This demonstrates how Elastic Workflows, AI Assistant, and Elasticsearch work together to automatically decide the best recovery action based on customer segment, abandonment reason, and cart value. Let me walk through the Elastic features first, then the key documents, and finally run a single command that demonstrates all 5 recovery scenarios."
+
+---
+
+## 🏗️ Elastic Features Used (30 seconds)
+
+### **Presenter Script**: "This project showcases the power of Elastic's serverless platform and AI capabilities"
+
+### **Core Elastic Components:**
+
+#### 1. **Elastic Serverless**
+- **Serverless Elasticsearch**: No infrastructure management, automatic scaling
+- **Pay-per-use pricing**: Cost-effective for variable workloads
+- **Built-in security**: Authentication and authorization included
+
+#### 2. **Elastic Workflows**
+- **Workflow Engine**: Orchestrates multi-step automated processes
+- **Elasticsearch Integration**: Native queries and indexing capabilities
+- **Conditional Logic**: Complex decision trees with foreach loops
+- **Data Transformation**: Liquid templating for dynamic content
+
+#### 3. **Elastic AI Assistant & Agent Builder**
+- **AI Agent**: Natural language interface for workflow execution
+- **Guardrails**: Business rule enforcement and safety constraints
+- **Tool Integration**: Workflow tools as agent capabilities
+- **Context Awareness**: Intelligent decision-making based on data
+
+#### 4. **Elasticsearch Features**
+- **Multi-index Queries**: Correlating cart, checkout, payment, and customer data
+- **Real-time Analytics**: Sub-second query performance
+- **Complex Aggregations**: Customer segmentation and abandonment analysis
+- **Audit Trail**: Complete recovery history tracking
+
+### **Integration Benefits:**
+- **Unified Platform**: All components work together seamlessly
+- **Real-time Processing**: Immediate cart abandonment detection and response
+- **Scalable Architecture**: Handles thousands of carts simultaneously
+- **Enterprise Security**: Built-in compliance and data protection
 
 ---
 
@@ -142,5 +179,5 @@ GET recovery_history/_search
 - **Business Impact**: VIP treatment, fraud guardrails, cost-effective recovery
 - **Single Command**: Complete workflow automation
 
-**Total Time**: 3 minutes maximum
+**Total Time**: 3.5 minutes
 **Coverage**: 100% of decision matrix and action types
