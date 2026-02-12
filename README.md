@@ -12,6 +12,7 @@ A multi-step AI agent that automatically detects abandoned shopping carts and tr
 - **🛡️ Business Guardrails**: Risk-aware decision making with fraud protection
 - **⚡ Serverless Ready**: Built for Elastic Serverless deployment
 - **🔧 Extensible**: Easy to add new recovery strategies and integrations
+- **📋 Architecture Documentation**: Complete system design and data flow diagrams
 
 ---
 
@@ -139,13 +140,20 @@ Detect abandoned carts in the last 24h, diagnose the top 3, and trigger the best
 ## 📊 Project Documentation
 
 For detailed technical documentation including:
+
+### 🏗️ **System Architecture**
+- **[Architecture Diagram](docs/architecture_diagram.md)** - Complete system design and data flow
+- Component interactions and technology stack
+- Scalability and integration patterns
+
+### 📋 **Technical Details**
 - Elasticsearch index schemas and mappings
 - Serverless workflow implementation
 - Data flow diagrams
 - Deployment guides
 - Troubleshooting tips
 
-See: **[docs/serverless_documentation.md](docs/serverless_documentation.md)**
+**See:** **[docs/serverless_documentation.md](docs/serverless_documentation.md)**
 
 ---
 
