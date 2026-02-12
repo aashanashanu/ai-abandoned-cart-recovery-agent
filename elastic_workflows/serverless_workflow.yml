@@ -56,14 +56,14 @@ steps:
               cart_id: "{{foreach.item._source.cart_id}}"
               cart_value: "{{foreach.item._source.cart_value}}"
               customer_id: "{{foreach.item._source.customer_id}}"
-              last_activity: "{{foreach.item._source.timestamp}}"
+              last_activity: "{{foreach.item._source.@timestamp}}"
               abandonment_reason: >-
                 {% assign payment = steps.check_payment_logs.output.hits.hits[0]._source %}
                 {% assign checkout = steps.check_checkout_attempts.output.hits.hits[0]._source %}
                 {% if payment and payment.status == "failed" %}
                   payment_failure
                 {% else %}
-                  {% if checkout and checkout.step == "shipping" and checkout.status != "completed" %}
+                  {% if checkout and checkout.step == "shipping_failed" and checkout.status != "completed" %}
                     shipping_issue
                   {% else %}
                     browsing_abandonment
