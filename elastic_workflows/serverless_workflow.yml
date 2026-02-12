@@ -56,7 +56,7 @@ steps:
               cart_id: "{{foreach.item._source.cart_id}}"
               cart_value: "{{foreach.item._source.cart_value}}"
               customer_id: "{{foreach.item._source.customer_id}}"
-              last_activity: "{{foreach.item._source.@timestamp}}"
+              last_activity: "{{foreach.item._source.timestamp}}"
               abandonment_reason: >-
                 {% assign payment = steps.check_payment_logs.output.hits.hits[0]._source %}
                 {% assign checkout = steps.check_checkout_attempts.output.hits.hits[0]._source %}
@@ -144,15 +144,15 @@ steps:
                 {% endif %}
 
               free_shipping: >-
-                {% if steps.set_customer_data.output.customer_segment == "vip" and steps.set_customer_data.output.abandonment_reason != "payment_failure" and steps.set_customer_data.output.cart_value <= 500 %}
-                  true
-                {% else %}
-                  {% if steps.set_customer_data.output.customer_segment == "standard" and steps.set_customer_data.output.abandonment_reason == "shipping_issue" %}
-                    true
-                  {% else %}
-                    false
-                  {% endif %}
-                {% endif %}
+                {%- if steps.set_customer_data.output.customer_segment == "vip" and steps.set_customer_data.output.abandonment_reason != "payment_failure" and steps.set_customer_data.output.cart_value <= 500 -%}
+                true
+                {%- else -%}
+                {%- if steps.set_customer_data.output.customer_segment == "standard" and steps.set_customer_data.output.abandonment_reason == "shipping_issue" -%}
+                true
+                {%- else -%}
+                false
+                {%- endif -%}
+                {%- endif -%}
               cart_id: "{{foreach.item._source.cart_id}}"
               customer_id: "{{foreach.item._source.customer_id}}"
               email: "{{foreach.item._source.email}}"
@@ -187,7 +187,6 @@ steps:
             with:
               index: recovery_history
               document:
-                "@timestamp": "{{now}}"
                 recovery_id: "{{foreach.item._source.cart_id}}-{{now}}"
                 cart_id: "{{steps.set_recovery_action.output.cart_id}}"
                 customer_id: "{{steps.set_recovery_action.output.customer_id}}"
@@ -204,4 +203,3 @@ steps:
                   free_shipping: "{{steps.set_recovery_action.output.free_shipping}}"
                 outcome:
                   status: "pending"
-                sent_at: "{{now}}"
