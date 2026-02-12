@@ -2,105 +2,18 @@
 
 ## 🎙️ Presenter Script (Verbal Communication)
 
-### **Opening (30 seconds)**
-"Today I'll show you our intelligent abandoned cart recovery system built entirely on Elastic's serverless platform. This demonstrates how Elastic Workflows, AI Assistant, and Elasticsearch work together to automatically decide the best recovery action based on customer segment, abandonment reason, and cart value. Let me walk through the Elastic features first, then the key documents, and finally run a single command that demonstrates all 5 recovery scenarios."
+### **Opening (15 seconds)**
+"Today I'll show you an intelligent abandoned cart recovery system built entirely on Elastic's serverless platform. Watch this - I'll run one command that automatically analyzes abandoned carts and applies the optimal recovery strategy for each customer type."
 
 ---
 
-## 🏗️ Elastic Features Used (30 seconds)
+## 🎯 Single Command Demo (1 minute 30 seconds)
 
-### **Presenter Script**: "This project showcases the power of Elastic's serverless platform and AI capabilities"
-
-### **Core Elastic Components:**
-
-#### 1. **Elastic Serverless**
-- **Serverless Elasticsearch**: No infrastructure management, automatic scaling
-- **Pay-per-use pricing**: Cost-effective for variable workloads
-- **Built-in security**: Authentication and authorization included
-
-#### 2. **Elastic Workflows**
-- **Workflow Engine**: Orchestrates multi-step automated processes
-- **Elasticsearch Integration**: Native queries and indexing capabilities
-- **Conditional Logic**: Complex decision trees with foreach loops
-- **Data Transformation**: Liquid templating for dynamic content
-
-#### 3. **Elastic AI Assistant & Agent Builder**
-- **AI Agent**: Natural language interface for workflow execution
-- **Guardrails**: Business rule enforcement and safety constraints
-- **Tool Integration**: Workflow tools as agent capabilities
-- **Context Awareness**: Intelligent decision-making based on data
-
-#### 4. **Elasticsearch Features**
-- **Multi-index Queries**: Correlating cart, checkout, payment, and customer data
-- **Real-time Analytics**: Sub-second query performance
-- **Complex Aggregations**: Customer segmentation and abandonment analysis
-- **Audit Trail**: Complete recovery history tracking
-
-### **Integration Benefits:**
-- **Unified Platform**: All components work together seamlessly
-- **Real-time Processing**: Immediate cart abandonment detection and response
-- **Scalable Architecture**: Handles thousands of carts simultaneously
-- **Enterprise Security**: Built-in compliance and data protection
-
----
-
-## 📋 Required Documents (Show First)
-
-### **Presenter Notes**: "Let me show you the three key documents that drive our intelligent decision-making"
-
-### 1. Workflow Diagram
-**File**: `docs/serverless_workflow_diagram.md`
-**Presenter Script**: "Here's our decision matrix - you can see how VIP customers get premium treatment like payment retries and discounts, while high fraud risk customers get guardrails like blocked actions."
-
-**Key Sections**:
-- Decision Logic Matrix (lines 111-125)
-- Action Types & Conditions (lines 113-125)
-- Complete flow diagram (lines 5-62)
-
-### 2. Serverless Workflow
-**File**: `elastic_workflows/serverless_workflow.yml`
-**Presenter Script**: "This is the actual implementation - the Jinja2 logic that evaluates customer segment, abandonment step, and cart value to select the optimal action."
-
-**Key Section**: Decision logic (lines 97-156)
-
-### 3. Sample Data Reference
-**File**: `docs/sample_data_reference.md`
-**Presenter Script**: "Our test data covers all scenarios - VIP customers, standard customers, high fraud risk cases, with different cart values and abandonment reasons."
-
-**Key Sections**:
-- Customer segments (lines 11-14)
-- Cart events with item counts (lines 27-33)
-- Test scenarios (lines 136-176)
-
----
-
-## ⚡ Pre-Demo Setup (30 seconds)
-
-### **Presenter Script**: "Before we run the demo, let me quickly set up the environment with our test data"
-
-```bash
-# 1. Bootstrap indices
-python scripts/bootstrap_indices.py
-
-# 2. Seed sample data  
-python scripts/seed_sample_data.py
-
-# 3. Import workflow in Kibana
-# Navigate: Stack → Workflows → Import
-# File: elastic_workflows/serverless_workflow.yml
-```
-
-**Presenter Notes**: "Now we have 5 test carts with different customer profiles ready for analysis."
-
----
-
-## 🎯 Single Command Demo (2 minutes)
-
-### **Presenter Script**: "Now watch this - I'll run one command that will analyze all 5 abandoned carts and apply the optimal recovery strategy for each"
+### **Presenter Script**: "Now watch this - I'll run one command that will analyze all 5 abandoned carts and apply optimal recovery strategy for each"
 
 ### Agent Chat Command:
 ```
-Detect abandoned carts and show detailed analysis of each customer's segment, abandonment reason, and the recovery action selected with business rationale.
+Detect abandoned carts and show detailed analysis of each customer's segment, abandonment reason, and recovery action selected with business rationale.
 ```
 
 ### **Presenter Script**: "The agent is now analyzing carts and selecting recovery actions..."
@@ -161,11 +74,96 @@ GET recovery_history/_search
 ### **Presenter Script**: "You can see all 5 actions were executed correctly according to our decision matrix."
 
 **Verification Checklist**:
-- **payment_retry**: VIP + payment failure ✅
-- **free_shipping**: Standard + shipping issues ✅  
-- **blocked**: High fraud risk + payment failure ✅
-- **discount**: Standard + high item count ✅
-- **reminder**: Default cases ✅
+- **payment_retry**: VIP + payment failure 
+- **free_shipping**: Standard + shipping issues  
+- **blocked**: High fraud risk + payment failure 
+- **discount**: Standard + high item count 
+- **reminder**: Default cases 
+
+---
+
+## 🏗️ How It Works - Elastic Features (30 seconds)
+
+### **Presenter Script**: "Now let me show you what makes this possible - the power of Elastic's serverless platform and AI capabilities"
+
+### **Core Elastic Components:**
+
+#### 1. **Elastic Serverless**
+- **Serverless Elasticsearch**: No infrastructure management, automatic scaling
+- **Pay-per-use pricing**: Cost-effective for variable workloads
+- **Built-in security**: Authentication and authorization included
+
+#### 2. **Elastic Workflows**
+- **Workflow Engine**: Orchestrates multi-step automated processes
+- **Elasticsearch Integration**: Native queries and indexing capabilities
+- **Conditional Logic**: Complex decision trees with foreach loops
+- **Data Transformation**: Liquid templating for dynamic content
+
+#### 3. **Elastic AI Assistant & Agent Builder**
+- **AI Agent**: Natural language interface for workflow execution
+- **Guardrails**: Business rule enforcement and safety constraints
+- **Tool Integration**: Workflow tools as agent capabilities
+- **Context Awareness**: Intelligent decision-making based on data
+
+#### 4. **Elasticsearch Features**
+- **Multi-index Queries**: Correlating cart, checkout, payment, and customer data
+- **Real-time Analytics**: Sub-second query performance
+- **Complex Aggregations**: Customer segmentation and abandonment analysis
+- **Audit Trail**: Complete recovery history tracking
+
+### **Integration Benefits:**
+- **Unified Platform**: All components work together seamlessly
+- **Real-time Processing**: Immediate cart abandonment detection and response
+- **Scalable Architecture**: Handles thousands of carts simultaneously
+- **Enterprise Security**: Built-in compliance and data protection
+
+---
+
+## 📋 Key Documents (30 seconds)
+
+### **Presenter Notes**: "Let me show you three key documents that drive our intelligent decision-making"
+
+### 1. Workflow Diagram
+**File**: `docs/serverless_workflow_diagram.md`
+**Presenter Script**: "Here's our decision matrix - you can see how VIP customers get premium treatment like payment retries and discounts, while high fraud risk customers get guardrails like blocked actions."
+
+**Key Sections**:
+- Decision Logic Matrix (lines 111-125)
+- Action Types & Conditions (lines 113-125)
+- Complete flow diagram (lines 5-62)
+
+### 2. Serverless Workflow
+**File**: `elastic_workflows/serverless_workflow.yml`
+**Presenter Script**: "This is the actual implementation - Jinja2 logic that evaluates customer segment, abandonment step, and cart value to select the optimal action."
+
+**Key Section**: Decision logic (lines 97-156)
+
+### 3. Sample Data Reference
+**File**: `docs/sample_data_reference.md`
+**Presenter Script**: "Our test data covers all scenarios - VIP customers, standard customers, high fraud risk cases, with different cart values and abandonment reasons."
+
+**Key Sections**:
+- Customer segments (lines 11-14)
+- Cart events with item counts (lines 27-33)
+- Test scenarios (lines 136-176)
+
+---
+
+## ⚡ Quick Setup (15 seconds)
+
+### **Presenter Script**: "The setup is straightforward - just bootstrap the data and import the workflow"
+
+```bash
+# 1. Bootstrap indices
+python scripts/bootstrap_indices.py
+
+# 2. Seed sample data  
+python scripts/seed_sample_data.py
+
+# 3. Import workflow in Kibana
+# Navigate: Stack → Workflows → Import
+# File: elastic_workflows/serverless_workflow.yml
+```
 
 ---
 
@@ -175,9 +173,9 @@ GET recovery_history/_search
 
 **Key Takeaways**:
 - **Intelligent Logic**: Segment + abandonment reason + cart value = optimal action
-- **All Actions Covered**: payment_retry, free_shipping, blocked, discount, reminder  
+- **All Actions Covered**: payment_retry, free_shipping, blocked, discount, reminder
 - **Business Impact**: VIP treatment, fraud guardrails, cost-effective recovery
 - **Single Command**: Complete workflow automation
 
-**Total Time**: 3.5 minutes
+**Total Time**: 3 minutes
 **Coverage**: 100% of decision matrix and action types
