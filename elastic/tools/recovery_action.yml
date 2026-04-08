@@ -1,0 +1,63 @@
+name: recovery_action
+description: >
+  MCP tool that invokes the Recovery Action AWS Lambda to send a
+  recovery email via Amazon SES and publish a recovery_history event
+  to EventBridge for indexing. Use this after the decision engine
+  has determined the recommended action.
+type: aws_lambda
+config:
+  region: "${AWS_REGION:us-east-1}"
+  function_name: "${RECOVERY_ACTION_LAMBDA_NAME:ai-abandoned-cart-recovery-recovery-action-dev}"
+input_schema:
+  type: object
+  properties:
+    cart_id:
+      type: string
+      description: Unique identifier for the abandoned cart
+    customer_id:
+      type: string
+      description: Unique identifier for the customer
+    email:
+      type: string
+      description: Customer email address to send recovery message to
+    customer_name:
+      type: string
+      description: Customer display name (optional, used in email greeting)
+    recommended_action:
+      type: object
+      description: Recovery action determined by the decision engine
+      properties:
+        type:
+          type: string
+          description: "Action type: payment_retry, discount, free_shipping, reminder, reminder_only, blocked"
+          enum:
+            - payment_retry
+            - discount
+            - free_shipping
+            - reminder
+            - reminder_only
+            - blocked
+        discount:
+          type: string
+          description: "Discount amount if applicable (e.g., '15%', '10%')"
+        message:
+          type: string
+          description: Recovery message to include in the email
+      required:
+        - type
+        - message
+  required:
+    - cart_id
+    - customer_id
+    - email
+    - recommended_action
+output_schema:
+  type: object
+  properties:
+    statusCode:
+      type: integer
+    body:
+      type: string
+      description: >
+        JSON string containing cart_id, recovery_id, action_taken,
+        and send_result with status, channel, and message_id.

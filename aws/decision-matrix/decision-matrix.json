@@ -1,0 +1,116 @@
+{
+  "segments": {
+    "VIP": {
+      "payment_failure": {
+        "type": "payment_retry",
+        "message": "We noticed an issue with your payment. Try an alternative payment method.",
+        "discount": null,
+        "free_shipping": false
+      },
+      "high_cart_value": {
+        "type": "discount",
+        "message": "Complete your purchase and enjoy 15% off!",
+        "discount": "15%",
+        "free_shipping": false,
+        "cart_value_threshold": 500
+      },
+      "shipping_issue": {
+        "type": "free_shipping",
+        "message": "Great news! We're offering free shipping on your order.",
+        "discount": null,
+        "free_shipping": true
+      },
+      "browsing_abandonment": {
+        "type": "free_shipping",
+        "message": "As a VIP, enjoy free shipping on your cart items!",
+        "discount": null,
+        "free_shipping": true
+      }
+    },
+    "high_fraud_risk": {
+      "payment_failure": {
+        "type": "blocked",
+        "message": "Your order is under review. No action taken.",
+        "discount": null,
+        "free_shipping": false
+      },
+      "shipping_issue": {
+        "type": "reminder_only",
+        "message": "You left items in your cart. Complete your purchase when ready.",
+        "discount": null,
+        "free_shipping": false
+      },
+      "browsing_abandonment": {
+        "type": "reminder_only",
+        "message": "You left items in your cart. Complete your purchase when ready.",
+        "discount": null,
+        "free_shipping": false
+      }
+    },
+    "standard": {
+      "payment_failure": {
+        "type": "payment_retry",
+        "message": "Your payment didn't go through. Try an alternative payment method.",
+        "discount": null,
+        "free_shipping": false
+      },
+      "high_cart_value": {
+        "type": "discount",
+        "message": "Complete your purchase and get 10% off!",
+        "discount": "10%",
+        "free_shipping": false,
+        "cart_value_threshold": 300
+      },
+      "shipping_issue": {
+        "type": "free_shipping",
+        "message": "We're offering free shipping to help complete your order!",
+        "discount": null,
+        "free_shipping": true
+      },
+      "browsing_abandonment": {
+        "type": "reminder",
+        "message": "You left items in your cart. Don't miss out!",
+        "discount": null,
+        "free_shipping": false
+      }
+    },
+    "default": {
+      "payment_failure": {
+        "type": "payment_retry",
+        "message": "Your payment didn't go through. Please try again.",
+        "discount": null,
+        "free_shipping": false
+      },
+      "shipping_issue": {
+        "type": "reminder",
+        "message": "Complete your purchase today.",
+        "discount": null,
+        "free_shipping": false
+      },
+      "browsing_abandonment": {
+        "type": "reminder",
+        "message": "Complete your purchase today.",
+        "discount": null,
+        "free_shipping": false
+      }
+    }
+  },
+  "success_indicators": {
+    "payment_retry": {
+      "segment": "VIP",
+      "estimated_success_rate": "85%"
+    },
+    "free_shipping": {
+      "segment": "standard",
+      "estimated_success_rate": "65%"
+    },
+    "reminder": {
+      "segment": "standard",
+      "estimated_success_rate": "40%"
+    },
+    "blocked": {
+      "segment": "high_fraud_risk",
+      "estimated_success_rate": "0%"
+    }
+  }
+}

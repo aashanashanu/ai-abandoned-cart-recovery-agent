@@ -1,0 +1,59 @@
+name: decision_engine
+description: >
+  MCP tool that invokes the Decision Engine AWS Lambda to determine
+  the best recovery action for an abandoned cart based on customer
+  segment, abandonment reason, cart value, and fraud risk.
+type: aws_lambda
+config:
+  region: "${AWS_REGION:us-east-1}"
+  function_name: "${DECISION_ENGINE_LAMBDA_NAME:ai-abandoned-cart-recovery-decision-engine-dev}"
+input_schema:
+  type: object
+  properties:
+    cart_id:
+      type: string
+      description: Unique identifier for the abandoned cart
+    customer_id:
+      type: string
+      description: Unique identifier for the customer
+    user_segment:
+      type: string
+      description: "Customer segment: VIP, standard, high_fraud_risk"
+      enum:
+        - VIP
+        - standard
+        - high_fraud_risk
+    abandonment_reason:
+      type: string
+      description: "Root cause of abandonment: payment_failure, shipping_issue, browsing_abandonment"
+      enum:
+        - payment_failure
+        - shipping_issue
+        - browsing_abandonment
+        - performance_latency
+        - unknown
+    cart_value:
+      type: number
+      description: Total value of the abandoned cart
+    fraud_risk:
+      type: string
+      description: "Customer fraud risk level: low, medium, high"
+      enum:
+        - low
+        - medium
+        - high
+  required:
+    - cart_id
+    - customer_id
+    - user_segment
+    - abandonment_reason
+output_schema:
+  type: object
+  properties:
+    statusCode:
+      type: integer
+    body:
+      type: string
+      description: >
+        JSON string containing cart_id and recommended_action
+        with type, discount (optional), and message fields.

@@ -210,6 +210,9 @@ steps:
         - name: analyze_with_ai_agent
           type: ai.agent
           with:
+            tools:
+              - decision_engine
+              - recovery_action
             message: |-
               Analyze this abandoned cart and generate a personalized recovery strategy:
 
@@ -225,9 +228,16 @@ steps:
               - Lifetime Value: {{steps.fetch_customer_profile.output.hits.hits[0]._source.lifetime_value}}
               - Preferred Channel: {{steps.fetch_customer_profile.output.hits.hits[0]._source.preferred_channel}}
               - Fraud Risk: {{steps.fetch_customer_profile.output.hits.hits[0]._source.fraud_risk}}
+              - Email: {{steps.fetch_customer_profile.output.hits.hits[0]._source.email}}
 
               Diagnosis:
               {{steps.emit_final_diagnosis.output.final_diagnosis}}
+
+              Instructions:
+              1. Call the decision_engine tool with the cart and customer data to get the recommended action.
+              2. Review the recommended action returned by the decision engine.
+              3. Call the recovery_action tool to send the recovery email via SES and record the attempt.
+              4. Return a summary of what was done.
 
               Please provide:
               1. A personalized recovery message for this customer
