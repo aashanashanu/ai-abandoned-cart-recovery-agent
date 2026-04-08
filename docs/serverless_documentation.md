@@ -8,7 +8,7 @@ The AI Abandoned Cart Recovery Agent is a serverless solution that automatically
 
 ### 1. Elasticsearch Indices
 
-#### Mappings (`/mappings/`)
+#### Mappings (`/elastic/mappings/`)
 Define schema for each index:
 
 - **cart_events**: Tracks cart activity (add, remove, view events)
@@ -31,18 +31,18 @@ Define schema for each index:
 
 ### 2. Elasticsearch Queries
 
-**Note:** All queries are now embedded directly in the workflow file (`/elastic_workflows/serverless_workflow.yml`) for self-contained deployment.
+**Note:** All queries are now embedded directly in the workflow file (`/elastic/workflows/serverless_workflow.yml`) for self-contained deployment.
 
-Previously, queries were structured as separate JSON files:
+- Previously, queries were structured as separate JSON files under `/elastic/queries/`:
 - `detect_abandoned_carts.json` - Finds carts idle 30+ minutes
 - `analyze_abandonment_cart_checkout.json` - Gets checkout events for analysis
 - `analyze_abandonment_payment_logs.json` - Identifies payment issues
 - `find_similar_abandonments.json` - Searches historical cases
 
 **Current Implementation:**
-All Elasticsearch queries are now embedded inline within the workflow steps:
+All Elasticsearch queries are now embedded inline within the workflow steps (`/elastic/workflows/serverless_workflow.yml`):
 - **detect_carts** step queries `cart_events` index
-- **analyze_abandonment** step queries `checkout_events` index  
+- **analyze_abandonment** step queries `checkout_events` index
 - **get_customer** step queries `customer_profiles` index
 - **record_attempt** step indexes to `recovery_history`
 
@@ -72,7 +72,7 @@ Populates indices with sample data:
 - Recovery history with outcomes
 ```
 
-### 4. Serverless Workflow (`/elastic_workflows/serverless_workflow.yml`)
+### 4. Serverless Workflow (`/elastic/workflows/serverless_workflow.yml`)
 
 Single workflow file that executes a comprehensive abandoned cart recovery process:
 

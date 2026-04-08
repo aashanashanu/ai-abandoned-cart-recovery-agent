@@ -118,7 +118,7 @@ python scripts/seed_sample_data.py
 
 1. Open your Serverless Kibana
 2. Navigate to **Stack Management → Workflows**
-3. Import `elastic_workflows/serverless_workflow.yml`
+3. Import `elastic/workflows/serverless_workflow.yml`
 4. Enable the workflow
 
 ### 5. Create Agent
@@ -160,16 +160,16 @@ For detailed technical documentation including:
 ## 📁 Repository Structure
 
 ```
-├── elastic_workflows/
-│   └── serverless_workflow.yml              # Complete serverless workflow with nested logic
+├── elastic/
+│   ├── mappings/                            # ES index mappings
+│   ├── workflows/                           # Serverless workflows and watches
+│   └── queries/                             # ES query artifacts
 ├── agent_builder/
 │   ├── serverless_agent.yaml                 # Agent definition
 │   └── serverless_demo_script.md            # Demo script
 ├── scripts/
 │   ├── bootstrap_indices.py                 # Create ES indices
-│   └── seed_sample_data.py                  # Sample data
-├── mappings/                               # ES index mappings
-├── queries/                                # Pre-built ES queries (legacy - now in workflow)
+│   └── seed_sample_data.py                  # Sample data (now sends events to EventBridge)
 └── docs/                                   # Technical documentation
     ├── serverless_documentation.md         # Complete architecture docs
     ├── serverless_workflow_diagram.md      # Workflow flow and decision logic

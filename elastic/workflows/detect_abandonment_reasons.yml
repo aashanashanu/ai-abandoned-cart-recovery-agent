@@ -1,0 +1,231 @@
+name: detect_abandonment_reasons
+description: >
+  Detects abandoned carts from cart_state (status=active, check_at < now),
+  then diagnoses the most-likely reason each cart was abandoned using
+  cart, checkout, payment, and session signals.
+enabled: true
+triggers:
+  - type: scheduled
+    with:
+      every: "5m"
+
+steps:
+  # Step 1: Find abandoned cart IDs from cart_state
+  - name: find_abandoned_carts
+    type: elasticsearch.search
+    with:
+      _source:
+        - "cart_id"
+        - "customer_id"
+        - "last_seen"
+        - "check_at"
+        - "status"
+        - "cart_value"
+      index: cart_state
+      query:
+        bool:
+          filter:
+            - term:
+                status: "active"
+            - range:
+                check_at:
+                  lt: "now"
+      size: 100
+      sort: "check_at"
+
+  # Step 2: Extract cart IDs into a list
+  - name: extract_cart_ids
+    type: data.set
+    with:
+      cart_ids: "{{steps.find_abandoned_carts.output.hits.hits | map: '_source' | map: 'cart_id' | json}}"
+
+  # Step 3: Diagnose each abandoned cart
+  - name: conditionalStep
+    type: if
+    condition: ${{steps.extract_cart_ids.output.cart_ids.length >0}}
+    steps:      
+    - name: for_each_cart
+      type: foreach
+      foreach: "{{steps.extract_cart_ids.output.cart_ids}}"
+      steps:
+        - name: fetch_cart_events
+          type: elasticsearch.search
+          with:
+            index: cart_events
+            query:
+              term:
+                cart_id: "{{foreach.item}}"
+            size: 10
+
+        - name: fetch_latest_checkout
+          type: elasticsearch.search
+          with:
+            index: checkout_events
+            query:
+              term:
+                cart_id: "{{foreach.item}}"
+            size: 1
+
+        - name: fetch_latest_payment
+          type: elasticsearch.search
+          with:
+            index: payment_logs
+            query:
+              term:
+                cart_id: "{{foreach.item}}"
+            size: 1
+
+        - name: fetch_session_metrics
+          type: elasticsearch.search
+          with:
+            index: session_metrics
+            query:
+              term:
+                session_id: "{{steps.fetch_cart_events.output.hits.hits[0]._source.session_id}}"
+            size: 1
+
+        - name: decide_payment_failure
+          type: if
+          condition: "${{steps.fetch_latest_payment.output.hits.total.value>0 and steps.fetch_latest_payment.output.hits.hits[0]._source.status==\"failed\"}}"
+          steps:
+            - name: set_payment_failure_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                diagnosis:
+                  root_cause: payment_failure
+                  signals:
+                    - "{{steps.fetch_latest_payment.output.hits.hits[0]._source.failure_code}}"
+                    - "{{steps.fetch_latest_payment.output.hits.hits[0]._source.failure_message}}"
+
+        - name: emit_payment_failure_diagnosis_conditionalStep
+          type: if
+          condition: "${{steps.set_payment_failure_reason.output.cart_id}}"
+          steps:
+            - name: emit_payment_failure_diagnosis
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                final_diagnosis: "{{steps.set_payment_failure_reason.output.diagnosis}}"
+
+        - name: decide_checkout_shipping
+          type: if
+          condition: "${{steps.fetch_latest_checkout.output.hits.total.value>0 and steps.fetch_latest_checkout.output.hits.hits[0]._source.step==\"shipping_failed\"}}"
+          steps:
+            - name: set_shipping_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                diagnosis:
+                  root_cause: pricing_shipping
+                  signals:
+                    - "shipping_cost: {{steps.fetch_latest_checkout.output.hits.hits[0]._source.shipping_cost}}"
+                    - "step: {{steps.fetch_latest_checkout.output.hits.hits[0]._source.step}}"
+
+        - name: emit_shipping_diagnosis_conditionalStep
+          type: if
+          condition: "${{steps.set_shipping_reason.output.cart_id}}"
+          steps:
+            - name: emit_shipping_diagnosis
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                final_diagnosis: "{{steps.set_shipping_reason.output.diagnosis}}"
+
+        - name: decide_performance
+          type: if
+          condition: "${{steps.fetch_session_metrics.output.hits.total.value>0}}"
+          steps:
+            - name: check_performance_thresholds
+              type: if
+              condition: "${{steps.fetch_session_metrics.output.hits.hits[0]._source.p95_latency_ms>1000 or steps.fetch_session_metrics.output.hits.hits[0]._source.error_rate>0.05}}"
+              steps:
+                - name: set_performance_reason_latency
+                  type: data.set
+                  with:
+                    cart_id: "{{foreach.item}}"
+                    diagnosis:
+                      root_cause: performance_latency
+                      signals:
+                        - "p95_latency_ms: {{steps.fetch_session_metrics.output.hits.hits[0]._source.p95_latency_ms}}"
+                        - "error_rate: {{steps.fetch_session_metrics.output.hits.hits[0]._source.error_rate}}"
+              else:
+                - name: check_error_rate
+                  type: if
+                  condition: "${{steps.fetch_session_metrics.output.hits.hits[0]._source.error_rate>0.05}}"
+                  steps:
+                    - name: set_performance_reason_error_rate
+                      type: data.set
+                      with:
+                        cart_id: "{{foreach.item}}"
+                        diagnosis:
+                          root_cause: performance_latency
+                          signals:
+                            - "p95_latency_ms: {{steps.fetch_session_metrics.output.hits.hits[0]._source.p95_latency_ms}}"
+                            - "error_rate: {{steps.fetch_session_metrics.output.hits.hits[0]._source.error_rate}}"
+
+        
+        - name: emit_performance_diagnosis_latency_conditionalStep
+          type: if
+          condition: "${{steps.set_performance_reason_latency.output.cart_id}}"
+          steps:
+            - name: emit_performance_diagnosis_latency
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                final_diagnosis: "{{steps.set_performance_reason_latency.output.diagnosis}}"
+
+        - name: emit_performance_diagnosis_error_rate_conditionalStep
+          type: if
+          condition: "${{steps.set_performance_reason_error_rate.output.cart_id}}"
+          steps:
+            - name: emit_performance_diagnosis_error_rate
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                final_diagnosis: "{{steps.set_performance_reason_error_rate.output.diagnosis}}"
+
+        - name: decide_browse
+          type: if
+          condition: "${{steps.fetch_cart_events.output.hits.total.value>0 and steps.fetch_latest_checkout.output.hits.total.value==0}}"
+          steps:
+            - name: set_browse_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                diagnosis:
+                  root_cause: browsing_or_window_shopping
+                  signals:
+                    - "cart_events_count: {{steps.fetch_cart_events.output.hits.total.value}}"
+
+        - name: emit_browse_diagnosis_conditionalStep
+          type: if
+          condition: "${{steps.set_browse_reason.output.cart_id}}"
+          steps:
+            - name: emit_browse_diagnosis
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                final_diagnosis: "{{steps.set_browse_reason.output.diagnosis}}"
+
+        - name: decide_unknown
+          type: if
+          condition: "${{steps.fetch_latest_payment.output.hits.total.value==0 and steps.fetch_latest_checkout.output.hits.total.value==0 and steps.fetch_session_metrics.output.hits.total.value==0}}"
+          steps:
+            - name: set_unknown_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                diagnosis:
+                  root_cause: unknown
+                  signals: ["insufficient_signals"]
+
+        - name: emit_unknown_diagnosis_conditionalStep
+          type: if
+          condition: "${{steps.set_unknown_reason.output.cart_id}}"
+          steps:
+            - name: emit_unknown_diagnosis
+              type: data.set
+              with:
+                cart_id: "{{foreach.item}}"
+                final_diagnosis: "{{steps.set_unknown_reason.output.diagnosis}}"

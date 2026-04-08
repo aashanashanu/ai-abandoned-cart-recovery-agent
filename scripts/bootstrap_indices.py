@@ -7,10 +7,11 @@ from elasticsearch import Elasticsearch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAPPINGS_DIR = PROJECT_ROOT / "mappings"
+MAPPINGS_DIR = PROJECT_ROOT / "elastic" / "mappings"
 
 INDEX_FILES = {
     "cart_events": "cart_events.json",
+    "cart_state": "cart_state.json",
     "checkout_events": "checkout_events.json",
     "payment_logs": "payment_logs.json",
     "session_metrics": "session_metrics.json",
@@ -61,8 +62,9 @@ def main() -> None:
 
         exists = es.indices.exists(index=index_name)
         if exists:
-            print(f"Index already exists: {index_name}")
-            continue
+            # Delete and recreate to get latest mapping
+            print(f"Deleting existing index: {index_name}")
+            es.indices.delete(index=index_name)
 
         es.indices.create(index=index_name, **body)
         print(f"Created index: {index_name}")

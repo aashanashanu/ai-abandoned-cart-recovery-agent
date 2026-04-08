@@ -1,0 +1,11 @@
+{
+  "size": 5,
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "product_id": "${product_id}" } },
+        { "range": { "@timestamp": { "gte": "now-30d" } } }
+      ]
+    }
+  }
+}

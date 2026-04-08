@@ -133,7 +133,7 @@ GET recovery_history/_search
 - Complete flow diagram (lines 5-62)
 
 ### 2. Serverless Workflow
-**File**: `elastic_workflows/serverless_workflow.yml`
+**File**: `elastic/workflows/serverless_workflow.yml`
 **Presenter Script**: "This is the actual implementation - Jinja2 logic that evaluates customer segment, abandonment step, and cart value to select the optimal action."
 
 **Key Section**: Decision logic (lines 97-156)
@@ -162,7 +162,7 @@ python scripts/seed_sample_data.py
 
 # 3. Import workflow in Kibana
 # Navigate: Stack → Workflows → Import
-# File: elastic_workflows/serverless_workflow.yml
+# File: elastic/workflows/serverless_workflow.yml
 ```
 
 ---
