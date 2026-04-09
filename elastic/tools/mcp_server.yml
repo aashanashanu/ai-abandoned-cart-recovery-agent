@@ -1,0 +1,28 @@
+name: mcp_server
+description: >
+  MCP (Model Context Protocol) server that exposes the Decision Engine
+  and Recovery Action Lambdas as tools over Streamable HTTP transport.
+  Authenticates via API Gateway API key.
+type: mcp_server
+transport: streamable-http
+config:
+  region: "${AWS_REGION:us-east-1}"
+  url: "${MCP_SERVER_URL}"
+  api_key: "${MCP_API_KEY}"
+  function_name: "${MCP_SERVER_LAMBDA_NAME:ai-abandoned-cart-recovery-mcp-server-dev}"
+protocol_version: "2025-03-26"
+server_info:
+  name: ai-abandoned-cart-recovery-mcp
+  version: "1.0.0"
+capabilities:
+  tools:
+    listChanged: false
+tools:
+  - decision_engine
+  - recovery_action
+authentication:
+  type: api_key
+  header: x-api-key
+  description: >
+    API key issued via AWS API Gateway. Pass as x-api-key header
+    on every request to the MCP server endpoint.

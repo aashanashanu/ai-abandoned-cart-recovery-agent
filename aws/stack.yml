@@ -79,6 +79,22 @@ Parameters:
     Default: 256
     Description: Recovery action Lambda function memory size in MB
 
+  # --- MCP Server Parameters ---
+  McpServerLambdaTimeout:
+    Type: Number
+    Default: 60
+    Description: MCP server Lambda function timeout in seconds (higher to allow downstream invocations)
+
+  McpServerLambdaMemorySize:
+    Type: Number
+    Default: 512
+    Description: MCP server Lambda function memory size in MB
+
+  McpApiKeyStageName:
+    Type: String
+    Default: v1
+    Description: API Gateway stage name for the MCP server endpoint
+
 # ==============================================================
 # Resources
 # ==============================================================
@@ -91,7 +107,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${ProjectName}-event-ingest-${Environment}'
-      Runtime: python3.9
+      Runtime: python3.12
       Handler: handler.lambda_handler
       CodeUri: lambda/event_ingest/
       Timeout: 30
@@ -220,8 +236,7 @@ Resources:
           ENVIRONMENT: !Ref Environment
       Code:
         ZipFile: |
-          # Placeholder – deploy actual code via CI/CD pipeline
-          # See aws/lambda/decision_engine/handler.py
+          # Updated via deploy script
           def handler(event, context):
               return {"statusCode": 200, "body": "Deploy actual code"}
       Tags:
@@ -360,6 +375,271 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/*'
 
+  # ============================================================
+  # 11. IAM Role for MCP Server Lambda
+  # ============================================================
+  McpServerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-mcp-server-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: InvokeToolLambdas
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt DecisionEngineLambda.Arn
+                  - !GetAtt RecoveryActionLambda.Arn
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================================================
+  # 12. MCP Server Lambda Function
+  # ============================================================
+  McpServerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-mcp-server-${Environment}'
+      Description: MCP (Model Context Protocol) server exposing decision engine and recovery action as tools
+      Runtime: python3.12
+      Handler: handler.handler
+      Role: !GetAtt McpServerLambdaRole.Arn
+      Timeout: !Ref McpServerLambdaTimeout
+      MemorySize: !Ref McpServerLambdaMemorySize
+      Environment:
+        Variables:
+          DECISION_ENGINE_FUNCTION: !Ref DecisionEngineLambda
+          RECOVERY_ACTION_FUNCTION: !Ref RecoveryActionLambda
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          # Placeholder – deploy actual code via CI/CD pipeline
+          # See aws/lambda/mcp_server/handler.py
+          def handler(event, context):
+              return {"statusCode": 200, "body": "Deploy actual code"}
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================================================
+  # 13. CloudWatch Log Group for MCP Server
+  # ============================================================
+  McpServerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-mcp-server-${Environment}'
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================================================
+  # 14. API Gateway REST API for MCP Server
+  # ============================================================
+  McpApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${ProjectName}-mcp-api-${Environment}'
+      Description: API Gateway for MCP server – AI Abandoned Cart Recovery
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── /mcp resource ─────────────────────────────────────────
+  McpApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref McpApi
+      ParentId: !GetAtt McpApi.RootResourceId
+      PathPart: mcp
+
+  # ── POST /mcp (JSON-RPC endpoint) ─────────────────────────
+  McpApiPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref McpApi
+      ResourceId: !Ref McpApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${McpServerLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: '200'
+
+  # ── GET /mcp (health check / server info) ──────────────────
+  McpApiGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref McpApi
+      ResourceId: !Ref McpApiResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${McpServerLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: '200'
+
+  # ── DELETE /mcp (session termination) ──────────────────────
+  McpApiDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref McpApi
+      ResourceId: !Ref McpApiResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${McpServerLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: '200'
+
+  # ── OPTIONS /mcp (CORS preflight – no API key required) ────
+  McpApiOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref McpApi
+      ResourceId: !Ref McpApiResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      ApiKeyRequired: false
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${McpServerLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: '204'
+
+  # ============================================================
+  # 15. API Gateway Deployment & Stage
+  # ============================================================
+  McpApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - McpApiPostMethod
+      - McpApiGetMethod
+      - McpApiDeleteMethod
+      - McpApiOptionsMethod
+    Properties:
+      RestApiId: !Ref McpApi
+
+  McpApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref McpApi
+      DeploymentId: !Ref McpApiDeployment
+      StageName: !Ref McpApiKeyStageName
+      Description: !Sub 'MCP server stage (${Environment})'
+      MethodSettings:
+        - ResourcePath: /~1mcp
+          HttpMethod: POST
+          ThrottlingBurstLimit: 50
+          ThrottlingRateLimit: 100
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================================================
+  # 16. API Key & Usage Plan
+  # ============================================================
+  McpApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn: McpApiStage
+    Properties:
+      Name: !Sub '${ProjectName}-mcp-api-key-${Environment}'
+      Description: API key for MCP server access
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref McpApi
+          StageName: !Ref McpApiKeyStageName
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  McpApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: McpApiStage
+    Properties:
+      UsagePlanName: !Sub '${ProjectName}-mcp-usage-plan-${Environment}'
+      Description: Usage plan for the MCP server API
+      ApiStages:
+        - ApiId: !Ref McpApi
+          Stage: !Ref McpApiKeyStageName
+      Throttle:
+        BurstLimit: 50
+        RateLimit: 100
+      Quota:
+        Limit: 10000
+        Period: DAY
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  McpApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref McpApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref McpApiUsagePlan
+
+  # ============================================================
+  # 17. Lambda Permission for API Gateway → MCP Server
+  # ============================================================
+  McpServerLambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref McpServerLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${McpApi}/*'
+
 # ==============================================================
 # Outputs
 # ==============================================================
@@ -414,3 +694,34 @@ Outputs:
     Value: !Ref RecoveryActionLambda
     Export:
       Name: !Sub '${ProjectName}-recovery-action-name-${Environment}'
+
+  # --- MCP Server ---
+  McpServerLambdaArn:
+    Description: MCP server Lambda function ARN
+    Value: !GetAtt McpServerLambda.Arn
+    Export:
+      Name: !Sub '${ProjectName}-mcp-server-arn-${Environment}'
+
+  McpServerLambdaName:
+    Description: MCP server Lambda function name
+    Value: !Ref McpServerLambda
+    Export:
+      Name: !Sub '${ProjectName}-mcp-server-name-${Environment}'
+
+  McpServerUrl:
+    Description: MCP server endpoint URL (POST JSON-RPC requests here)
+    Value: !Sub 'https://${McpApi}.execute-api.${AWS::Region}.amazonaws.com/${McpApiKeyStageName}/mcp'
+    Export:
+      Name: !Sub '${ProjectName}-mcp-server-url-${Environment}'
+
+  McpApiKeyId:
+    Description: API key ID for the MCP server (retrieve the value via AWS Console or CLI)
+    Value: !Ref McpApiKey
+    Export:
+      Name: !Sub '${ProjectName}-mcp-api-key-id-${Environment}'
+
+  McpApiId:
+    Description: API Gateway REST API ID
+    Value: !Ref McpApi
+    Export:
+      Name: !Sub '${ProjectName}-mcp-api-id-${Environment}'

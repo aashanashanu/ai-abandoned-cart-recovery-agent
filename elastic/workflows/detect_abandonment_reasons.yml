@@ -2,7 +2,8 @@ name: detect_abandonment_reasons
 description: >
   Detects abandoned carts from cart_state (status=active, check_at < now),
   then diagnoses the most-likely reason each cart was abandoned using
-  cart, checkout, payment, and session signals. Enriches with customer profile data.
+  cart, checkout, payment, and session signals. Enriches with customer profile data
+  and uses AI agent with MCP tools to execute recovery actions.
 enabled: true
 triggers:
   - type: scheduled
@@ -207,68 +208,88 @@ steps:
               {% elsif steps.set_unknown_reason.output.diagnosis %}
                 {{steps.set_unknown_reason.output.diagnosis | json}}
               {% endif %}
+
+        # AI Agent with MCP tools: calls decision engine then recovery action
         - name: analyze_with_ai_agent
           type: ai.agent
           with:
-            tools:
-              - decision_engine
-              - recovery_action
+            agent_id: "abandoned_cart"
             message: |-
-              Analyze this abandoned cart and generate a personalized recovery strategy:
+              You have access to MCP tools for cart recovery. Use them to process this abandoned cart.
 
-              Cart Details:
-              - Cart ID: {{foreach.item.cart_id}}
-              - Customer ID: {{foreach.item.customer_id}}
-              - Cart Value: {{foreach.item.cart_value}} {{foreach.item.currency}}
-              - Device: {{foreach.item.device_type}}
-              - Last Seen: {{foreach.item.last_seen}}
+              **Emitted Cart Data:**
+              ```json
+              {{steps.emit_final_diagnosis.output | json}}
+              ```
 
-              Customer Profile:
-              - Segment: {{steps.fetch_customer_profile.output.hits.hits[0]._source.segment}}
-              - Lifetime Value: {{steps.fetch_customer_profile.output.hits.hits[0]._source.lifetime_value}}
-              - Preferred Channel: {{steps.fetch_customer_profile.output.hits.hits[0]._source.preferred_channel}}
-              - Fraud Risk: {{steps.fetch_customer_profile.output.hits.hits[0]._source.fraud_risk}}
-              - Email: {{steps.fetch_customer_profile.output.hits.hits[0]._source.email}}
+              **Your Task:**
+              1. **First**, call the **decision engine MCP tool** with the following data:
+                 - cart_id: {{steps.emit_final_diagnosis.output.cart_id}}
+                 - customer_id: {{steps.emit_final_diagnosis.output.customer_id}}
+                 - cart_value: {{steps.emit_final_diagnosis.output.cart_value}}
+                 - currency: {{steps.emit_final_diagnosis.output.currency}}
+                 - root_cause: Extract from final_diagnosis
+                 - customer_segment: {{steps.emit_final_diagnosis.output.customer_profile.segment}}
+                 - lifetime_value: {{steps.emit_final_diagnosis.output.customer_profile.lifetime_value}}
+                 - fraud_risk: {{steps.emit_final_diagnosis.output.customer_profile.fraud_risk}}
+                 
+                 The decision engine will return the recommended recovery action, incentive, and priority.
 
-              Diagnosis:
-              {{steps.emit_final_diagnosis.output.final_diagnosis}}
+              2. **Then**, call the **recovery action MCP tool** with:
+                 - cart_id: {{steps.emit_final_diagnosis.output.cart_id}}
+                 - customer_id: {{steps.emit_final_diagnosis.output.customer_id}}
+                 - recommended_action: (from decision engine result)
+                 - incentive: (from decision engine result)
+                 - channel: {{steps.emit_final_diagnosis.output.customer_profile.preferred_channel}}
+                 - email: {{steps.emit_final_diagnosis.output.customer_profile.email}}
+                 - phone: {{steps.emit_final_diagnosis.output.customer_profile.phone}}
+                 
+                 This will send the recovery message via the customer's preferred channel.
 
-              Instructions:
-              1. Call the decision_engine tool with the cart and customer data to get the recommended action.
-              2. Review the recommended action returned by the decision engine.
-              3. Call the recovery_action tool to send the recovery email via SES and record the attempt.
-              4. Return a summary of what was done.
-
-              Please provide:
-              1. A personalized recovery message for this customer
-              2. Recommended incentive (if any)
-              3. Best time to send the recovery message
-              4. Priority level (high/medium/low)
+              Execute both MCP tool calls in sequence and report the results.
             schema:
               type: object
               properties:
-                recovery_message:
+                decision_engine_result:
+                  type: object
+                  description: Result from the decision engine MCP tool call
+                  properties:
+                    recommended_action:
+                      type: string
+                      description: The action recommended by the decision engine
+                    incentive:
+                      type: string
+                      description: Recommended incentive or discount
+                    priority:
+                      type: string
+                      enum:
+                        - high
+                        - medium
+                        - low
+                      description: Priority level for this recovery
+                    reasoning:
+                      type: string
+                      description: Explanation from decision engine
+                recovery_action_result:
+                  type: object
+                  description: Result from the recovery action MCP tool call
+                  properties:
+                    status:
+                      type: string
+                      description: Status of the recovery action (e.g., 'sent', 'failed', 'queued')
+                    channel_used:
+                      type: string
+                      description: Channel used to send recovery message (email, sms, push)
+                    message_id:
+                      type: string
+                      description: ID of the sent message for tracking
+                    sent_at:
+                      type: string
+                      description: Timestamp when message was sent
+                summary:
                   type: string
-                  description: Personalized message to send to the customer
-                recommended_incentive:
-                  type: string
-                  description: Suggested discount or incentive (e.g., '10% off', 'free shipping', 'none')
-                send_timing:
-                  type: string
-                  description: Best time to send the message (e.g., 'immediately', 'in 2 hours', 'tomorrow morning')
-                priority:
-                  type: string
-                  enum:
-                    - high
-                    - medium
-                    - low
-                  description: Priority level for this recovery attempt
-                reasoning:
-                  type: string
-                  description: Brief explanation of the recovery strategy
+                  description: Brief summary of the complete recovery process
               required:
-                - recovery_message
-                - recommended_incentive
-                - send_timing
-                - priority
-                - reasoning
+                - decision_engine_result
+                - recovery_action_result
+                - summary
