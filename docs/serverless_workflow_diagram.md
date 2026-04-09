@@ -234,4 +234,349 @@ Cart Events → Detect Abandonment (24h window) → For Each Cart:
 - **Analytics**: Kibana dashboards for performance monitoring
 - **Learning**: Recovery history analysis for strategy optimization
 
-This workflow demonstrates a complete, production-ready abandoned cart recovery system using Elastic Serverless and AI Agent Builder.
+### MCP (Model Context Protocol) Server Integration
+- **Endpoint**: `https://85vaz0z5p1.execute-api.us-east-1.amazonaws.com/v1/mcp`
+- **Protocol**: JSON-RPC 2.0 over Streamable HTTP
+- **Authentication**: API key via `x-api-key` header
+- **Transport**: RESTful HTTP with CORS support
+- **Tools Exposed**: `decision_engine`, `recovery_action`
+
+---
+
+## 🌐 MCP Server Overview
+
+The **Model Context Protocol (MCP) Server** provides a standardized interface to the abandoned cart recovery system, enabling:
+
+- **AI/LLM Integration**: Connect Claude, GPT-4, or other AI models as clients
+- **Programmatic Access**: Call decision engine and recovery action via HTTP
+- **Tool Composition**: Chain multiple tools for complex recovery workflows
+- **Batch Processing**: Support for bulk cart recovery operations
+
+### Architecture
+
+```
+┌─────────────────────────────────────┐
+│   MCP Client (AI Model / Agent)     │
+│   (Claude, GPT-4, Custom Tools)     │
+└────────────┬────────────────────────┘
+             │ JSON-RPC 2.0
+             │ x-api-key authentication
+             ▼
+┌─────────────────────────────────────┐
+│   API Gateway (API Key Auth)        │
+│   ✓ 100 req/s throttling            │
+│   ✓ 10,000 req/day quota            │
+└────────────┬────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────┐
+│   MCP Server Lambda                 │
+│   (JSON-RPC 2.0 Handler)            │
+└────────┬──────────────────┬─────────┘
+         │                  │
+    ┌────▼───┐          ┌───▼────┐
+    │Decision│          │Recovery│
+    │Engine  │◄─invoke─►│ Action │
+    │Lambda  │          │ Lambda │
+    └────────┘          └────────┘
+         │                  │
+    ┌────▼──────────────────▼────┐
+    │  AWS Lambda Functions      │
+    │  - S3 (decision matrix)    │
+    │  - SES (email recovery)    │
+    │  - EventBridge (history)   │
+    └────────────────────────────┘
+```
+
+---
+
+## 🛠️ MCP Tools Available
+
+### 1. decision_engine
+
+**Purpose**: Determine the best recovery action for an abandoned cart
+
+**Input Parameters**:
+- `cart_id` (string): Unique cart identifier
+- `customer_id` (string): Customer identifier
+- `user_segment` (enum): `VIP`, `standard`, `high_fraud_risk`
+- `abandonment_reason` (enum): `payment_failure`, `shipping_issue`, `browsing_abandonment`, `performance_latency`, `unknown`
+- `cart_value` (number, optional): Total cart value for threshold checks
+- `fraud_risk` (enum, optional): `low`, `medium`, `high`
+
+**Output**: Recommended recovery action with type, discount (optional), and message
+
+**Example Request**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "decision_engine",
+    "arguments": {
+      "cart_id": "cart_12345",
+      "customer_id": "cust_001",
+      "user_segment": "VIP",
+      "abandonment_reason": "payment_failure",
+      "cart_value": 500.00,
+      "fraud_risk": "low"
+    }
+  }
+}
+```
+
+**Example Response**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "{\n  \"cart_id\": \"cart_12345\",\n  \"recommended_action\": {\n    \"type\": \"payment_retry\",\n    \"discount\": null,\n    \"message\": \"Your payment didn't go through. Please try again.\"\n  }\n}"
+    }],
+    "isError": false
+  }
+}
+```
+
+### 2. recovery_action
+
+**Purpose**: Send recovery email via Amazon SES and log recovery history to EventBridge
+
+**Input Parameters**:
+- `cart_id` (string): Unique cart identifier
+- `customer_id` (string): Customer identifier
+- `email` (string): Customer email address
+- `customer_name` (string, optional): Customer name for greeting
+- `recommended_action` (object): Action details from decision_engine
+  - `type` (enum): `payment_retry`, `discount`, `free_shipping`, `reminder`, `reminder_only`, `blocked`
+  - `discount` (string, optional): Discount amount (e.g., "15%")
+  - `message` (string): Recovery message for email
+
+**Output**: Recovery attempt record with status and message ID
+
+**Example Request**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "recovery_action",
+    "arguments": {
+      "cart_id": "cart_12345",
+      "customer_id": "cust_001",
+      "email": "customer@example.com",
+      "customer_name": "Jane Doe",
+      "recommended_action": {
+        "type": "discount",
+        "discount": "15%",
+        "message": "Complete your purchase and get 15% off!"
+      }
+    }
+  }
+}
+```
+
+**Example Response**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "{\n  \"cart_id\": \"cart_12345\",\n  \"recovery_id\": \"rec_abc123def456\",\n  \"action_taken\": \"discount\",\n  \"send_result\": {\n    \"status\": \"sent\",\n    \"channel\": \"email\",\n    \"message_id\": \"<AWS-SES-Message-ID>\"\n  }\n}"
+    }],
+    "isError": false
+  }
+}
+```
+
+---
+
+## 📡 MCP Protocol Methods
+
+| Method | Purpose | Requires Auth |
+|--------|---------|---------------|
+| `initialize` | MCP handshake, returns server info | No |
+| `ping` | Health check | No |
+| `tools/list` | Get available tools and schemas | Yes |
+| `tools/call` | Execute a tool | Yes |
+
+### Health Check (GET)
+
+```bash
+curl https://85vaz0z5p1.execute-api.us-east-1.amazonaws.com/v1/mcp \
+  -H 'x-api-key: <YOUR_API_KEY>'
+```
+
+Response:
+```json
+{
+  "server": "ai-abandoned-cart-recovery-mcp",
+  "version": "1.0.0",
+  "protocolVersion": "2025-03-26",
+  "status": "healthy",
+  "transport": "streamable-http",
+  "tools": ["decision_engine", "recovery_action"]
+}
+```
+
+---
+
+## 🔐 Authentication & Security
+
+### API Key Management
+
+1. **Retrieve API Key**:
+   ```bash
+   AWS_REGION=us-east-1
+   API_KEY_ID=$(aws cloudformation describe-stacks \
+     --stack-name ai-abandoned-cart-recovery-dev \
+     --query "Stacks[0].Outputs[?OutputKey=='McpApiKeyId'].OutputValue" \
+     --output text)
+   
+   API_KEY=$(aws apigateway get-api-key \
+     --api-key "$API_KEY_ID" \
+     --include-value \
+     --query "value" \
+     --output text)
+   ```
+
+2. **Include in Every Request**:
+   ```bash
+   curl -H 'x-api-key: '${API_KEY}'' ...
+   ```
+
+### Throttling & Quotas
+
+- **Rate Limit**: 100 requests/second
+- **Daily Quota**: 10,000 requests/day
+- **Burst Capacity**: 50 requests/second
+
+### CORS Support
+
+- Enabled for `*` origin (configurable)
+- Supports preflight requests (OPTIONS method)
+- Headers: `Content-Type`, `Authorization`, `X-Api-Key`, `Mcp-Session-Id`
+
+---
+
+## 🤖 Using with AI Models / Agents
+
+### Claude Desktop Configuration
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "abandoned-cart-recovery": {
+      "url": "https://85vaz0z5p1.execute-api.us-east-1.amazonaws.com/v1/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "x-api-key": "<YOUR_API_KEY>"
+      }
+    }
+  }
+}
+```
+
+### Workflow Integration (Programmatic)
+
+Use the MCP tools in your recovery workflow:
+
+```python
+import httpx
+import json
+
+MCP_URL = "https://85vaz0z5p1.execute-api.us-east-1.amazonaws.com/v1/mcp"
+API_KEY = "<YOUR_API_KEY>"
+
+def call_decision_engine(cart_id, customer_id, user_segment, reason):
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "decision_engine",
+            "arguments": {
+                "cart_id": cart_id,
+                "customer_id": customer_id,
+                "user_segment": user_segment,
+                "abandonment_reason": reason
+            }
+        }
+    }
+    
+    response = httpx.post(
+        MCP_URL,
+        json=payload,
+        headers={"x-api-key": API_KEY}
+    )
+    return response.json()
+
+def call_recovery_action(cart_id, customer_id, email, action):
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "recovery_action",
+            "arguments": {
+                "cart_id": cart_id,
+                "customer_id": customer_id,
+                "email": email,
+                "recommended_action": action
+            }
+        }
+    }
+    
+    response = httpx.post(
+        MCP_URL,
+        json=payload,
+        headers={"x-api-key": API_KEY}
+    )
+    return response.json()
+
+# Usage
+decision = call_decision_engine("cart_001", "cust_001", "VIP", "payment_failure")
+action = json.loads(decision["result"]["content"][0]["text"])["recommended_action"]
+recovery = call_recovery_action("cart_001", "cust_001", "customer@example.com", action)
+```
+
+---
+
+## 📊 Complete Workflow with MCP Integration
+
+```mermaid
+flowchart TD
+    A[Start] --> B[Detect Abandoned Carts]
+    B --> C[For Each Cart: Analyze Abandonment]
+    C --> D[Gather Cart & Customer Data]
+    D --> E["Call MCP: decision_engine"]
+    E --> F["Get Recommended Action"]
+    F --> G{Action Valid?}
+    G -->|Yes| H["Call MCP: recovery_action"]
+    G -->|No| I[Log Error]
+    H --> J["Recovery Email Sent"]
+    J --> K{More Carts?}
+    K -->|Yes| C
+    K -->|No| L[End]
+    I --> K
+    
+    classDef default fill:#f9f9f9,stroke:#333,color:#333
+    classDef mcp fill:#7c3aed,stroke:#333,color:#fff
+    classDef process fill:#e3f2fd,stroke:#333,color:#333
+    classDef decision fill:#e1f5e3,stroke:#333,color:#333
+    class E,H mcp
+    class D,F,J process
+    class G,K decision
+```
+
+---
+
+This workflow demonstrates a complete, production-ready abandoned cart recovery system using AWS Lambda, Elastic Serverless, MCP Protocol, and AI Agent Builder.
