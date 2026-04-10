@@ -1,91 +1,142 @@
-# 🛒 AI Abandoned Cart Recovery Agent
+# AI Abandoned Cart Recovery Agent
 
-A multi-step AI agent that automatically detects abandoned shopping carts and triggers personalized recovery actions using Elastic Agent Builder with Elasticsearch workflows.
+An event-driven system that detects abandoned shopping carts and triggers
+personalised recovery actions using **AWS EventBridge + Lambda**,
+**Elasticsearch**, an **Elastic AI Agent**, and two **MCP tools**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🎯 Features
-
-- **🤖 AI-Powered Detection**: Automatically identifies abandoned carts from real-time data
-- **🎯 Smart Recovery**: Context-aware action selection based on customer segments
-- **📊 Real-Time Analytics**: Complete recovery history and performance tracking
-- **🛡️ Business Guardrails**: Risk-aware decision making with fraud protection
-- **⚡ Serverless Ready**: Built for Elastic Serverless deployment
-- **🔧 Extensible**: Easy to add new recovery strategies and integrations
-- **📋 Architecture Documentation**: Complete system design and data flow diagrams
-
 ---
 
-## 📖 Agent Overview
-
-The AI Abandoned Cart Recovery Agent is an intelligent e-commerce automation solution that addresses the critical problem of abandoned shopping carts, which costs businesses billions in lost revenue annually. Traditional approaches rely on generic discount blasts that waste margins and fail to address root causes, while this agent uses sophisticated AI-driven analysis to deliver personalized recovery strategies.
-
-### Problem Solved
-
-The agent solves the challenge of ineffective cart recovery by automatically detecting abandoned carts, diagnosing abandonment reasons, and selecting optimal recovery actions based on customer segmentation, fraud risk assessment, and cart value. Instead of one-size-fits-all solutions, it provides context-aware responses that balance revenue recovery with business risk management.
-
-### Features Used
-
-The solution leverages Elastic's complete serverless platform, including:
-
-- **Elasticsearch** for real-time data correlation across cart events, checkout attempts, payment logs, and customer profiles
-- **Elastic Workflows** engine orchestrates a complex multi-step process with conditional logic and foreach loops
-- **AI Assistant** provides natural language interface and intelligent decision-making
-- **Liquid templating** for dynamic content transformation
-- **Recovery history** maintains a complete audit trail
-
-### Key Highlights
-
-The **serverless workflow orchestration** was particularly impressive - the ability to create sophisticated nested logic with foreach loops that process each abandoned cart individually while maintaining performance at scale.
-
-The **AI Agent Builder integration** was another standout feature, allowing the complex workflow to be executed through simple natural language commands while maintaining business guardrails and safety constraints.
-
-### Development Challenges
-
-The main challenge was implementing the complex decision matrix that considers multiple variables (customer segment, abandonment reason, cart value, fraud risk) to select the optimal recovery action. This required careful design of the workflow's conditional logic and extensive testing to ensure all scenarios were handled correctly.
-
-The result is a production-ready system that demonstrates how AI, workflows, and real-time analytics can work together to solve complex business problems with intelligence and efficiency.
-
----
-
-## Hackathon pitch (2 minutes)
-
-- **Problem:** E-commerce sites lose revenue when shoppers add items but never finish checkout. Generic "discount blasts" waste margin and miss root cause.
-- **Solution:** An AI agent that correlates cart, checkout, payment, and performance signals in Elasticsearch, diagnoses abandonment cause, learns from past recoveries, and chooses least-intrusive, highest-success action.
-- **Why Elastic Agent Builder:** The agent is defined as a serverless workflow with AI, guardrails, and learning—all orchestrated by Elastic AI Assistant.
-- **Business impact:** Higher recovery rates, fewer unnecessary discounts, and a self-improving automation loop.
+## How It Works
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Cart Events   │    │  Checkout Events │    │ Customer Profile│
-│   (ES Index)    │    │   (ES Index)    │    │   (ES Index)    │
-└────────┬────────┘    └────────┬─────────┘    └────────┬────────┘
-         │                      │                        │
-         └──────────────────────┼────────────────────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │  Serverless Workflow     │
-                    │                      │
-                    │ 1. Detect Carts      │
-                    │ 2. Analyze Signals   │
-                    │ 3. Get Customer     │
-                    │ 4. Decide Action     │
-                    │ 5. Trigger Recovery  │
-                    │ 6. Record Attempt    │
-                    └───────────┬───────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │  Recovery Actions     │
-                    │  - Payment Retry     │
-                    │  - Discount          │
-                    │  - Free Shipping     │
-                    │  - Reminder          │
-                    └──────────────────────┘
+E-Commerce Events ──► EventBridge ──► Event Ingest Lambda ──► Elasticsearch
+                                                                    │
+                                           Scheduled Workflow (5 min) │
+                                           detect_abandonment_reasons │
+                                                                    │
+                                                    ┌───────────────┘
+                                                    ▼
+                                          Elastic AI Agent
+                                          (abandoned_cart)
+                                                    │
+                                    ┌───────────────┴───────────────┐
+                                    ▼                               ▼
+                          MCP: decision_engine           MCP: recovery_action
+                          (S3 decision matrix)           (SES email + EventBridge)
+                                                                    │
+                                                    recovery_history │
+                                                    event loops back ▼
+                                                              EventBridge
+```
+
+### 1. Event Ingestion
+
+All e-commerce events are emitted to **Amazon EventBridge**:
+
+| Event type | Index |
+|------------|-------|
+| Customer profiles | `customer_profiles` |
+| Cart activity (add to cart) | `cart_events` |
+| Checkout progress/failures | `checkout_events` |
+| Payment attempts | `payment_logs` |
+| Page performance | `session_metrics` |
+| Past recoveries | `recovery_history` |
+
+An **Event Ingest Lambda** listens on EventBridge and indexes each event into
+its Elasticsearch index. It also creates and maintains a `cart_state` document
+per cart (`active` → `completed` → `recovery_sent`).
+
+### 2. Scheduled Workflow
+
+The `detect_abandonment_reasons` workflow runs **every 5 minutes** inside
+Elasticsearch:
+
+1. Query `cart_state` for carts where `status = active` and `check_at < now`
+2. For each abandoned cart, fetch data from:
+   `customer_profiles`, `cart_events`, `checkout_events`, `payment_logs`,
+   `session_metrics`
+3. Diagnose root cause using conditional branches:
+   `payment_failure` → `pricing_shipping` → `performance_latency` →
+   `browsing_or_window_shopping` → `unknown`
+4. Emit a consolidated diagnosis payload with customer profile
+
+### 3. Elastic AI Agent
+
+The workflow calls an **Elastic AI Agent** (`abandoned_cart`) with the full
+diagnosis. The agent executes two MCP tool calls in sequence.
+
+### 4. MCP Tools
+
+The agent connects to an **MCP Server** (API Gateway + Lambda) over Streamable
+HTTP with API key auth:
+
+| Tool | Lambda | Purpose |
+|------|--------|---------|
+| `decision_engine` | Reads decision matrix from S3 | Returns recommended action (payment_retry, discount, free_shipping, reminder, blocked) based on segment, reason, cart value, fraud risk |
+| `recovery_action` | Sends email via SES | Delivers recovery message and publishes `recovery_history` event back to EventBridge (feedback loop) |
+
+---
+
+## Features
+
+- **Event-driven ingestion** — EventBridge + Lambda pipeline indexes all events
+  into Elasticsearch in real time
+- **Automated detection** — Scheduled workflow finds abandoned carts every 5 min
+- **Root-cause diagnosis** — Checks payment failures, shipping issues, latency,
+  browsing patterns
+- **AI-powered recovery** — Elastic AI Agent selects optimal action per customer
+- **MCP integration** — Decision Engine and Recovery Action exposed as MCP tools
+- **Feedback loop** — Recovery history loops back through EventBridge for tracking
+- **Fraud guardrails** — High-risk customers get reminder-only or blocked actions
+
+---
+
+## Repository Structure
+
+```
+├── aws/
+│   ├── stack.yml                          # CloudFormation (EventBridge, Lambdas, API GW, S3)
+│   ├── deploy.sh                          # One-command deployment script
+│   ├── DEPLOY.md                          # AWS deployment guide
+│   ├── MCP_SERVER.md                      # MCP server architecture & usage
+│   ├── decision-matrix/
+│   │   └── decision-matrix.json           # Action rules by segment/reason/value
+│   └── lambda/
+│       ├── event_ingest/handler.py        # EventBridge → Elasticsearch indexer
+│       ├── decision_engine/handler.py     # S3 matrix → recommended action
+│       ├── mcp_server/handler.py          # JSON-RPC 2.0 MCP router
+│       └── recovery_action/handler.py     # SES email + EventBridge history
+├── elastic/
+│   ├── mappings/                          # Index schemas (7 indices)
+│   ├── queries/                           # Standalone query examples
+│   ├── tools/                             # MCP tool + server definitions
+│   └── workflows/
+│       └── detect_abandonment_reasons.yml # Scheduled workflow (the core)
+├── scripts/
+│   ├── bootstrap_indices.py               # Create ES indices from mappings
+│   └── seed_sample_data.py                # Send sample events to EventBridge
+├── docs/
+│   ├── architecture_diagram.md            # System architecture
+│   ├── serverless_workflow_diagram.md     # Workflow step-by-step diagrams
+│   ├── serverless_documentation.md        # Technical reference
+│   ├── requirements_analysis.md           # Requirements compliance
+│   └── sample_data_reference.md           # Test data reference
+├── DEPLOYMENT.md                          # MCP server deployment summary
+├── demo_script.md                         # 3-minute demo script
+└── requirements.txt                       # Python dependencies
 ```
 
 ---
 
-## 🚀 Quickstart (Elastic Serverless)
+## Quickstart
+
+### Prerequisites
+
+- AWS account with permissions for Lambda, EventBridge, API Gateway, SES, S3
+- Elasticsearch cluster (Elastic Cloud or self-hosted)
+- Python 3.11+
 
 ### 1. Configure Environment
 
@@ -93,10 +144,15 @@ The result is a production-ready system that demonstrates how AI, workflows, and
 cp .env.example .env
 ```
 
-Edit `.env` with your Serverless details:
+Edit `.env`:
 ```env
-ES_SERVERLESS_ENDPOINT=https://your-project-id.es.us-east-1.aws.elastic-cloud.com
-ES_SERVERLESS_API_KEY=your-api-key
+# Elasticsearch
+ES_ENDPOINT=https://your-cluster.es.us-east-1.aws.elastic-cloud.com
+ES_API_KEY=your-es-api-key
+
+# AWS
+EVENT_BUS_NAME=ai-abandoned-cart-recovery-bus-dev
+AWS_REGION=us-east-1
 ```
 
 ### 2. Install Dependencies
@@ -107,106 +163,60 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Bootstrap Elasticsearch
+### 3. Deploy AWS Stack
+
+```bash
+cd aws && ./deploy.sh dev
+```
+
+This creates: EventBridge bus, Event Ingest Lambda, Decision Engine Lambda,
+Recovery Action Lambda, MCP Server Lambda, API Gateway, S3 bucket with
+decision matrix.
+
+### 4. Bootstrap Elasticsearch
 
 ```bash
 python scripts/bootstrap_indices.py
+```
+
+### 5. Seed Sample Data
+
+```bash
 python scripts/seed_sample_data.py
 ```
 
-### 4. Import Workflow
+Events are sent to EventBridge → Lambda indexes them into Elasticsearch.
 
-1. Open your Serverless Kibana
-2. Navigate to **Stack Management → Workflows**
-3. Import `elastic/workflows/serverless_workflow.yml`
-4. Enable the workflow
+### 6. Import Workflow
 
-### 5. Create Agent
+1. Open Kibana → **Stack Management → Workflows**
+2. Import `elastic/workflows/detect_abandonment_reasons.yml`
+3. Enable the workflow
+
+### 7. Create AI Agent
 
 1. Go to **AI Assistants → Agent Builder**
-2. Create new agent
-3. Go to **Manage Tools** and create workflow tool
-4. Select the workflow you imported
-5. Go to agent and enable this tool
-
-### 6. Test Agent
-
-```
-Detect abandoned carts in the last 24h, diagnose the top 3, and trigger the best recovery action.
-```
+2. Create agent with ID `abandoned_cart`
+3. Add the MCP Server as a tool connector (see `aws/MCP_SERVER.md`)
+4. The agent will be called automatically by the workflow
 
 ---
 
-## 📊 Project Documentation
+## Documentation
 
-For detailed technical documentation including:
-
-### 🏗️ **System Architecture**
-- **[Architecture Diagram](docs/architecture_diagram.md)** - Complete system design and data flow
-- Component interactions and technology stack
-- Scalability and integration patterns
-
-### 📋 **Technical Details**
-- Elasticsearch index schemas and mappings
-- Serverless workflow implementation
-- Data flow diagrams
-- Deployment guides
-- Troubleshooting tips
-
-**See:** **[docs/serverless_documentation.md](docs/serverless_documentation.md)**
+| Document | Description |
+|----------|-------------|
+| [docs/architecture_diagram.md](docs/architecture_diagram.md) | System architecture (ASCII + Mermaid) |
+| [docs/serverless_workflow_diagram.md](docs/serverless_workflow_diagram.md) | Workflow step-by-step with diagrams |
+| [docs/serverless_documentation.md](docs/serverless_documentation.md) | Technical reference for all components |
+| [docs/sample_data_reference.md](docs/sample_data_reference.md) | Test data and scenario reference |
+| [docs/requirements_analysis.md](docs/requirements_analysis.md) | Requirements compliance analysis |
+| [aws/MCP_SERVER.md](aws/MCP_SERVER.md) | MCP server architecture & usage |
+| [aws/DEPLOY.md](aws/DEPLOY.md) | AWS deployment guide |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | MCP deployment summary |
 
 ---
 
-## 📁 Repository Structure
+## License
 
-```
-├── elastic/
-│   ├── mappings/                            # ES index mappings
-│   ├── workflows/                           # Serverless workflows and watches
-│   └── queries/                             # ES query artifacts
-├── agent_builder/
-│   ├── serverless_agent.yaml                 # Agent definition
-│   └── serverless_demo_script.md            # Demo script
-├── scripts/
-│   ├── bootstrap_indices.py                 # Create ES indices
-│   └── seed_sample_data.py                  # Sample data (now sends events to EventBridge)
-└── docs/                                   # Technical documentation
-    ├── serverless_documentation.md         # Complete architecture docs
-    ├── serverless_workflow_diagram.md      # Workflow flow and decision logic
-    ├── requirements_analysis.md            # Business requirements
-    └── sample_data_reference.md            # Data structure reference
-```
-
----
-
-## 🔧 Development
-
-### Add New Recovery Actions
-
-1. Update the prompt in the workflow step
-2. Add corresponding HTTP endpoint configuration
-3. Update guardrails if needed
-
----
-
-## 📈 Monitoring
-
-Track recovery performance in Kibana:
-- Recovery rate by action type
-- Conversion by customer segment
-- Revenue recovered per campaign
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Update tests and documentation
-4. Submit a pull request
-
----
-
-## 📄 License
-
-MIT License - see LICENSE file for details
+MIT License — see [LICENSE](LICENSE) for details.

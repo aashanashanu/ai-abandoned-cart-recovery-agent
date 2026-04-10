@@ -1,181 +1,140 @@
-# 🚀 3-Minute Complete Demo Script
+# 3-Minute Demo Script
 
-## 🎙️ Presenter Script (Verbal Communication)
+## Opening (15 seconds)
 
-### **Opening (15 seconds)**
-"Today I'll show you an intelligent abandoned cart recovery system built entirely on Elastic's serverless platform. Watch this - I'll run one command that automatically analyzes abandoned carts and applies the optimal recovery strategy for each customer type."
-
----
-
-## 🎯 Single Command Demo (1 minute 30 seconds)
-
-### **Presenter Script**: "Now watch this - I'll run one command that will analyze all 5 abandoned carts and apply optimal recovery strategy for each"
-
-### Agent Chat Command:
-```
-Detect abandoned carts and show detailed analysis of each customer's segment, abandonment reason, and recovery action selected with business rationale.
-```
-
-### **Presenter Script**: "The agent is now analyzing carts and selecting recovery actions..."
-
-### Expected Agent Response:
-```
-Abandoned Cart Analysis
-Based on analysis of recent abandoned carts, I've identified three distinct customers with different segments, abandonment reasons, and recovery actions:
-
-Customer 1: Alex (VIP Customer)
-Segment: VIP
-Lifetime Value: $5,000
-Cart Value: $254.40
-Abandonment Reason: Payment Failure (card declined)
-Fraud Risk: Low
-Preferred Communication Channel: Email
-Recovery Action: Free Shipping Offer
-
-Business Rationale: For this high-value VIP customer with a significant cart value and low fraud risk, offering free shipping provides a meaningful incentive without sacrificing margin through discounts. Since abandonment was due to a payment issue rather than price sensitivity, addressing the convenience factor with free shipping is likely to encourage completion while maintaining profitability.
-
-Customer 2: Jamie (Standard Customer)
-Segment: Standard
-Lifetime Value: $1,800
-Cart Value: $32.40
-Abandonment Reason: Browsing Abandonment
-Fraud Risk: Low
-Preferred Communication Channel: Push Notification
-Recovery Action: Simple Reminder
-
-Business Rationale: For this standard customer with a relatively low cart value who abandoned during browsing, a simple reminder is the most cost-effective approach. The customer's preferred channel (push notification) makes this a non-intrusive way to re-engage without offering financial incentives for a lower-value cart, preserving margins while still attempting recovery.
-
-Customer 3: Sam (High Fraud Risk Customer)
-Segment: High Fraud Risk
-Lifetime Value: $250
-Cart Value: $53.40
-Abandonment Reason: Payment Failure (card declined)
-Fraud Risk: High
-Preferred Communication Channel: Email
-Recovery Action: Reminder Only
-
-Business Rationale: Given the high fraud risk classification and relatively low lifetime value, a cautious approach with just a reminder was selected. No financial incentives were offered due to fraud risk concerns, protecting the business from potential losses while still attempting recovery through the customer's preferred channel.
-
-This segmented approach to cart recovery demonstrates how customer value, risk profile, and abandonment context inform the selection of appropriate recovery tactics to maximize conversion while managing business risk.
-```
-
-### **Presenter Script**: "Perfect! One command analyzed all carts and applied intelligent recovery logic."
+> "I'll show you an intelligent abandoned cart recovery system. Events flow
+> through EventBridge into Elasticsearch, a scheduled workflow detects
+> abandoned carts every 5 minutes, and an AI agent calls MCP tools to decide
+> the best recovery action and send the email — all automated."
 
 ---
 
-## 🔍 Verification in Kibana (30 seconds)
+## Step 1 — Seed Data (30 seconds)
 
-### **Presenter Script**: "Let me quickly verify the results in our recovery history"
+> "First, we send sample events to EventBridge. The Event Ingest Lambda
+> indexes them into Elasticsearch and creates cart_state documents."
 
 ```bash
-GET recovery_history/_search
-```
-
-### **Presenter Script**: "You can see all 5 actions were executed correctly according to our decision matrix."
-
-**Verification Checklist**:
-- **payment_retry**: VIP + payment failure 
-- **free_shipping**: Standard + shipping issues  
-- **blocked**: High fraud risk + payment failure 
-- **discount**: Standard + high item count 
-- **reminder**: Default cases 
-
----
-
-## 🏗️ How It Works - Elastic Features (30 seconds)
-
-### **Presenter Script**: "Now let me show you what makes this possible - the power of Elastic's serverless platform and AI capabilities"
-
-### **Core Elastic Components:**
-
-#### 1. **Elastic Serverless**
-- **Serverless Elasticsearch**: No infrastructure management, automatic scaling
-- **Pay-per-use pricing**: Cost-effective for variable workloads
-- **Built-in security**: Authentication and authorization included
-
-#### 2. **Elastic Workflows**
-- **Workflow Engine**: Orchestrates multi-step automated processes
-- **Elasticsearch Integration**: Native queries and indexing capabilities
-- **Conditional Logic**: Complex decision trees with foreach loops
-- **Data Transformation**: Liquid templating for dynamic content
-
-#### 3. **Elastic AI Assistant & Agent Builder**
-- **AI Agent**: Natural language interface for workflow execution
-- **Guardrails**: Business rule enforcement and safety constraints
-- **Tool Integration**: Workflow tools as agent capabilities
-- **Context Awareness**: Intelligent decision-making based on data
-
-#### 4. **Elasticsearch Features**
-- **Multi-index Queries**: Correlating cart, checkout, payment, and customer data
-- **Real-time Analytics**: Sub-second query performance
-- **Complex Aggregations**: Customer segmentation and abandonment analysis
-- **Audit Trail**: Complete recovery history tracking
-
-### **Integration Benefits:**
-- **Unified Platform**: All components work together seamlessly
-- **Real-time Processing**: Immediate cart abandonment detection and response
-- **Scalable Architecture**: Handles thousands of carts simultaneously
-- **Enterprise Security**: Built-in compliance and data protection
-
----
-
-## 📋 Key Documents (30 seconds)
-
-### **Presenter Notes**: "Let me show you three key documents that drive our intelligent decision-making"
-
-### 1. Workflow Diagram
-**File**: `docs/serverless_workflow_diagram.md`
-**Presenter Script**: "Here's our decision matrix - you can see how VIP customers get premium treatment like payment retries and discounts, while high fraud risk customers get guardrails like blocked actions."
-
-**Key Sections**:
-- Decision Logic Matrix (lines 111-125)
-- Action Types & Conditions (lines 113-125)
-- Complete flow diagram (lines 5-62)
-
-### 2. Serverless Workflow
-**File**: `elastic/workflows/serverless_workflow.yml`
-**Presenter Script**: "This is the actual implementation - Jinja2 logic that evaluates customer segment, abandonment step, and cart value to select the optimal action."
-
-**Key Section**: Decision logic (lines 97-156)
-
-### 3. Sample Data Reference
-**File**: `docs/sample_data_reference.md`
-**Presenter Script**: "Our test data covers all scenarios - VIP customers, standard customers, high fraud risk cases, with different cart values and abandonment reasons."
-
-**Key Sections**:
-- Customer segments (lines 11-14)
-- Cart events with item counts (lines 27-33)
-- Test scenarios (lines 136-176)
-
----
-
-## ⚡ Quick Setup (15 seconds)
-
-### **Presenter Script**: "The setup is straightforward - just bootstrap the data and import the workflow"
-
-```bash
-# 1. Bootstrap indices
-python scripts/bootstrap_indices.py
-
-# 2. Seed sample data  
 python scripts/seed_sample_data.py
+```
 
-# 3. Import workflow in Kibana
-# Navigate: Stack → Workflows → Import
-# File: elastic/workflows/serverless_workflow.yml
+Expected output:
+```
+Enhanced sample data events sent to EventBridge: attempted=33 accepted=33
+Generated 5 customer profiles
+Generated 10 cart events
+Generated 4 checkout events
+Generated 2 payment logs
+Generated 5 session metrics
+Generated 6 recovery history entries
+
+=== Test Scenarios Created ===
+1. cart_1001: VIP customer with payment failure -> payment_retry
+2. cart_2002: Standard customer with shipping cost -> free_shipping
+3. cart_3003: New customer with performance issues -> reminder
+4. cart_4004: High fraud risk customer -> reminder (guardrail)
+5. cart_5005: International customer -> based on history
 ```
 
 ---
 
-## 📊 Demo Closing
+## Step 2 — Verify Indexing (15 seconds)
 
-### **Presenter Script**: "So in just 3 minutes, we've shown how our abandoned cart recovery system uses intelligent decision-making to automatically select the optimal recovery action for each customer scenario, balancing revenue recovery with fraud prevention and cost efficiency."
+> "Let's confirm the data landed in Elasticsearch."
 
-**Key Takeaways**:
-- **Intelligent Logic**: Segment + abandonment reason + cart value = optimal action
-- **All Actions Covered**: payment_retry, free_shipping, blocked, discount, reminder
-- **Business Impact**: VIP treatment, fraud guardrails, cost-effective recovery
-- **Single Command**: Complete workflow automation
+In Kibana Dev Tools:
+```
+GET _cat/indices/cart_state,cart_events,customer_profiles,checkout_events,payment_logs,session_metrics?v&h=index,docs.count
+```
 
-**Total Time**: 3 minutes
-**Coverage**: 100% of decision matrix and action types
+Expected: `cart_state` has 5 documents (one per cart), all with
+`status: active`.
+
+---
+
+## Step 3 — Workflow Triggers (1 minute)
+
+> "The `detect_abandonment_reasons` workflow runs every 5 minutes. It queries
+> cart_state for active carts past their check_at time, fetches related data
+> from all indices, diagnoses the root cause, and calls the AI agent."
+
+Show the workflow in Kibana: **Stack Management → Workflows →
+detect_abandonment_reasons**
+
+Key points to highlight:
+1. **Step 1**: Queries `cart_state` where `status=active` AND `check_at < now`
+2. **Foreach loop**: Processes each cart individually
+3. **5 data fetches**: customer_profiles, cart_events, checkout_events,
+   payment_logs, session_metrics
+4. **5 diagnosis branches**: payment_failure → pricing_shipping →
+   performance_latency → browsing_or_window_shopping → unknown
+5. **AI Agent call**: Passes full diagnosis to agent `abandoned_cart`
+
+> "The agent then calls two MCP tools in sequence."
+
+---
+
+## Step 4 — MCP Tools (30 seconds)
+
+> "The AI agent calls the Decision Engine to get the recommended action, then
+> calls Recovery Action to send the email and log the history."
+
+Show MCP Server health check:
+```bash
+curl https://85vaz0z5p1.execute-api.us-east-1.amazonaws.com/v1/mcp \
+  -H 'x-api-key: LUz0EXvKYJ80C3OOOK87x5EK2Sq6N1fk4ubFTEjl'
+```
+
+Show available tools:
+```bash
+curl -X POST https://85vaz0z5p1.execute-api.us-east-1.amazonaws.com/v1/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'x-api-key: LUz0EXvKYJ80C3OOOK87x5EK2Sq6N1fk4ubFTEjl' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+---
+
+## Step 5 — Verify Results (30 seconds)
+
+> "After the workflow completes, recovery_history has new entries and
+> cart_state is updated to recovery_sent."
+
+In Kibana Dev Tools:
+```
+GET recovery_history/_search?sort=@timestamp:desc&size=5
+```
+
+Verify each scenario got the expected action:
+
+| Cart | Customer | Diagnosis | Expected Action |
+|------|----------|-----------|----------------|
+| cart_1001 | cust_001 (VIP) | payment_failure | payment_retry |
+| cart_2002 | cust_002 (standard) | pricing_shipping | free_shipping |
+| cart_3003 | cust_004 (standard, $410) | performance_latency or browsing | discount 10% or reminder |
+| cart_4004 | cust_003 (high_fraud_risk) | payment_failure | blocked |
+| cart_5005 | cust_005 (standard) | pricing_shipping | free_shipping |
+
+Check cart_state was updated:
+```
+GET cart_state/_search?q=status:recovery_sent
+```
+
+---
+
+## Closing (15 seconds)
+
+> "The system runs fully autonomously. Events flow through EventBridge, get
+> indexed by Lambda, the scheduled workflow detects abandoned carts, the AI
+> agent diagnoses each one, calls the Decision Engine for the best action, and
+> sends the recovery email — all within minutes of cart abandonment. Recovery
+> history feeds back through EventBridge, closing the loop."
+
+**Key takeaways**:
+- Event-driven: EventBridge → Lambda → Elasticsearch
+- Scheduled detection: Workflow runs every 5 minutes
+- AI-powered: Elastic AI Agent with MCP tools
+- Feedback loop: Recovery history prevents duplicate attempts
+- Fraud guardrails: High-risk customers are blocked or reminder-only
+
+**Total time**: ~3 minutes

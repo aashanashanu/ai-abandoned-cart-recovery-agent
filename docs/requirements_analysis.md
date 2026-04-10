@@ -1,180 +1,108 @@
 # Requirements Analysis
 
-This document analyzes whether the current Abandoned Cart Recovery Agent project meets the specified requirements.
+Analysis of how the Abandoned Cart Recovery Agent meets the specified requirements.
 
-## Requirement Analysis
+---
 
-### ✅ **Multi-Step AI Agent**
-**Current Implementation**: The project successfully implements a multi-step AI agent using Elastic Agent Builder.
+## Requirement: Multi-Step AI Agent
 
-**Evidence**:
-- **Workflow Steps**: The `serverless_workflow.yml` contains 7 sequential steps:
-  1. `detect_carts` - Find abandoned carts using Elasticsearch query
-  2. `set_cart_id` - Store cart ID from detection results
-  3. `analyze_abandonment` - Diagnose abandonment reasons
-  4. `set_customer_id` - Extract customer ID from analysis
-  5. `get_customer` - Retrieve customer profile data
-  6. `decide_action` - Determine recovery action (currently set to "reminder")
-  7. `trigger_action` - Execute recovery via HTTP call
-  8. `record_attempt` - Log recovery attempt to Elasticsearch
+**Status**: Met
 
-- **Agent Builder Integration**: Uses workflow tool in `serverless_agent.yaml`
-- **Tool Usage**: Combines Elasticsearch queries, data manipulation, and HTTP calls
+The system chains multiple automated steps:
 
-### ✅ **Reasoning Model Integration**
-**Current Implementation**: The workflow now uses intelligent decision logic with dynamic action selection.
+1. **EventBridge → Lambda** ingests events and indexes them into Elasticsearch,
+   maintaining per-cart state.
+2. **Scheduled Workflow** (`detect_abandonment_reasons`) runs every 5 min in
+   Elasticsearch with nested steps:
+   - `elasticsearch.search` to find abandoned carts
+   - `foreach` loop with 5 data-fetch queries per cart
+   - 5 conditional diagnosis branches (Liquid `if/elsif`)
+   - `data.set` to consolidate the final diagnosis
+3. **Elastic AI Agent** (`ai.agent` step) receives the diagnosis payload.
+4. Agent calls **two MCP tools** in sequence: `decision_engine` then
+   `recovery_action`.
+5. Recovery Action publishes a `recovery_history` event back to EventBridge,
+   closing the feedback loop.
 
-**Evidence**:
-- **Dynamic Decision Logic**: Jinja2 templating with conditional action selection
-- **Multi-Factor Analysis**: Customer segment, abandonment cause, cart context
-- **Business Rules**: VIP treatment, fraud guardrails, recovery strategy mapping
-- **Context-Aware**: Action selection based on real-time data analysis
+---
 
-**Decision Logic Implemented**:
-```yaml
-{% if customer.segment == "vip" %}
-  {% if abandonment.step == "payment_failed" %}
-    payment_retry
-  {% else %}
-    free_shipping
-  {% endif %}
-{% elif customer.segment == "high_fraud_risk" %}
-  reminder
-{% elif cart.key and abandonment.step == "shipping_failed" %}
-  free_shipping
-{% elif cart.key and abandonment.step == "payment_failed" %}
-  payment_retry
-{% else %}
-  reminder
-{% endif %}
-```
+## Requirement: Reasoning Model Integration
 
-### ✅ **Multiple Tool Types**
-**Current Implementation**: Successfully combines multiple tool types as required.
+**Status**: Met
 
-**Elasticsearch Tools**:
-- `detect_carts`: Complex query with time range and aggregations
-- `analyze_abandonment`: Multi-field query with sorting
-- `get_customer`: Customer profile retrieval
-- `record_attempt`: Index operation for logging
+The Elastic AI Agent receives a structured diagnosis payload and must:
+- Parse the root cause and customer profile
+- Decide which MCP tool parameters to use
+- Call `decision_engine` first, then pass its output to `recovery_action`
+- Summarise the complete recovery in a structured response schema
 
-**Data Manipulation**:
-- `data.set` steps for variable management
-- Jinja2 templating for dynamic decision logic
-- Context passing between workflow steps
+The workflow itself applies rule-based reasoning via Liquid templating to
+diagnose the root cause from five possible branches.
 
-**External API Tools**:
-- `trigger_action`: HTTP POST to external recovery service
-- Rich payload with customer context and action details
-- Configurable endpoints and methods
+---
 
-### ✅ **Real-World Task Automation**
-**Current Implementation**: Automates the complete abandoned cart recovery business process.
+## Requirement: Multiple Tool Types
 
-**Business Process Covered**:
-1. **Detection**: Identify abandoned carts from last 24 hours
-2. **Diagnosis**: Analyze abandonment reasons and customer context
-3. **Customer Analysis**: Retrieve profile and segmentation data
-4. **Action Selection**: Intelligent decision making with dynamic logic
-5. **Recovery Execution**: Trigger appropriate recovery action with rich context
-6. **Logging**: Record attempt with complete diagnostic data for analytics
+**Status**: Met
 
-**Integration Points**:
-- **Elasticsearch**: Real-time cart and customer data
-- **External APIs**: Email, SMS, payment systems
-- **Analytics**: Recovery history and performance tracking
+| Tool Type | Usage |
+|-----------|-------|
+| `elasticsearch.search` | 6 queries per cart iteration (cart_state, customer_profiles, cart_events, checkout_events, payment_logs, session_metrics) |
+| `data.set` | Extract cart array, set diagnosis, emit final payload |
+| `if` / `elsif` | 5 conditional branches for root-cause diagnosis |
+| `foreach` | Iterate over abandoned carts |
+| `ai.agent` | Call Elastic AI Agent with diagnosis payload |
+| MCP tool: `decision_engine` | Lambda reads S3 decision matrix, returns recommended action |
+| MCP tool: `recovery_action` | Lambda sends SES email and publishes EventBridge event |
+| AWS Lambda | Event Ingest, Decision Engine, Recovery Action, MCP Server |
+| Amazon EventBridge | Event bus for ingestion and recovery history feedback loop |
+| Amazon SES | Email delivery |
+| Amazon S3 | Decision matrix storage |
+| API Gateway | MCP Server endpoint with API key auth |
 
-### ✅ **No Category Restrictions**
-**Current Implementation**: Uses all available tool types without limitations.
+---
 
-**Tool Types Used**:
-- **Elastic Workflows**: Native workflow engine
-- **Elasticsearch Query**: Direct database access
-- **HTTP Connector**: External API integration
-- **Data Operations**: Variable management and transformation
+## Requirement: Real-World Task Automation
 
-**Flexibility**:
-- **Extensible**: Easy to add new recovery actions
-- **Configurable**: Different endpoints and parameters
-- **Scalable**: Serverless architecture supports growth
+**Status**: Met
 
-### ✅ **Real-World Applicability**
-**Current Implementation**: Designed for practical business deployment.
+The system automates the complete abandoned cart recovery lifecycle:
 
-**Use Cases Supported**:
-- **E-commerce**: Online retail abandoned cart recovery
-- **Multi-channel**: Email, SMS, push notifications
-- **Customer Segmentation**: VIP, standard, high-risk handling
-- **Revenue Recovery**: Direct business impact measurement
+| Phase | Implementation |
+|-------|---------------|
+| **Detection** | Scheduled workflow queries `cart_state` every 5 min |
+| **Data enrichment** | Fetches customer profile, cart history, checkout, payment, session data |
+| **Diagnosis** | Five root-cause branches with signal extraction |
+| **Decision** | AI Agent → Decision Engine (segment + reason + value + fraud → action) |
+| **Execution** | AI Agent → Recovery Action (SES email delivery) |
+| **Tracking** | Recovery history indexed via EventBridge → Lambda → Elasticsearch |
+| **Loop closure** | `cart_state` updated to `recovery_sent`, preventing duplicates |
 
-**Production Features**:
-- **Error Handling**: Robust failure management
-- **Performance Monitoring**: Built-in analytics and logging
-- **Compliance**: Guardrails for business rule enforcement
-- **Scalability**: Serverless deployment model
+---
 
-## Gap Analysis
+## Requirement: Real-World Applicability
 
-### ✅ **All Requirements Fully Met**
-**Status**: No gaps identified - all requirements successfully implemented.
+**Status**: Met
 
-**Enhanced Implementation**:
-- **Dynamic Reasoning**: Replaced static action with intelligent decision logic
-- **Rich Context**: Comprehensive customer and cart data analysis
-- **Business Intelligence**: VIP treatment, fraud guardrails, recovery strategy mapping
-- **Production Ready**: Complete end-to-end automation with logging
+Production-ready features:
 
-## Compliance Status
+- **Event-driven architecture** — EventBridge decouples producers from consumers
+- **Idempotent ingestion** — Documents indexed by deterministic IDs
+- **Fraud guardrails** — High-risk customers get `reminder_only` or `blocked`
+- **Cart value thresholds** — VIP > $500 and Standard > $300 trigger discounts
+- **Feedback loop** — Recovery history prevents duplicate recovery attempts
+- **API key security** — MCP Server secured via API Gateway API key
+- **Throttling** — 100 req/s, 10,000 req/day quota on MCP endpoint
+- **Observability** — CloudWatch logs for all Lambdas, recovery_history index for analytics
 
-### ✅ **Requirements Met**
+---
 
-| Requirement | Status | Implementation |
-|-------------|--------|----------------|
-| Multi-Step AI Agent | ✅ **COMPLETE** | 7-step workflow with tool integration |
-| Reasoning Model Integration | ✅ **COMPLETE** | Dynamic decision logic with Jinja2 templating |
-| Multiple Tool Types | ✅ **COMPLETE** | ES queries, HTTP calls, data operations |
-| Real-World Task Automation | ✅ **COMPLETE** | End-to-end business process automation |
-| No Category Restrictions | ✅ **COMPLETE** | Uses all available tool types |
-| Real-World Applicability | ✅ **COMPLETE** | Production-ready e-commerce solution |
+## Compliance Summary
 
-## Summary
-
-### 🎯 **Overall Assessment: FULLY COMPLIANT**
-
-The Abandoned Cart Recovery Agent project successfully meets all specified requirements:
-
-1. **Multi-Step Architecture**: Complete 7-step workflow with proper state management
-2. **Intelligent Reasoning**: Dynamic decision logic using Jinja2 templating with business rules
-3. **Tool Integration**: Combines Elasticsearch, HTTP, and data manipulation tools
-4. **Business Process Automation**: End-to-end abandoned cart recovery solution
-5. **Production Ready**: Scalable, monitored, and extensible architecture
-
-### 🔧 **Current Capabilities**
-
-**Intelligent Decision Making**:
-- **VIP Customers**: Payment retry for failures, free shipping otherwise
-- **High Fraud Risk**: Gentle reminder only (guardrails)
-- **Shipping Issues**: Free shipping offers
-- **Payment Failures**: Automated retry attempts
-- **Default Cases**: Standard reminder notifications
-
-**Rich Context Handling**:
-- **Customer Segmentation**: VIP, standard, high-risk treatment
-- **Abandonment Analysis**: Root cause identification
-- **Cart Context**: Value, items, timing analysis
-- **Recovery History**: Performance tracking and learning
-
-**Production Features**:
-- **Error Handling**: Robust failure management
-- **Performance Monitoring**: Built-in analytics and logging
-- **Compliance**: Business rule enforcement
-- **Scalability**: Serverless deployment model
-
-### 🚀 **Ready for Deployment**
-
-The project provides a complete, production-ready abandoned cart recovery system that:
-- **Automates** the entire recovery process
-- **Intelligently selects** appropriate recovery actions
-- **Protects against** fraud and risky scenarios
-- **Tracks performance** for continuous improvement
-- **Scales** with serverless architecture
+| Requirement | Status | Key Evidence |
+|-------------|--------|-------------|
+| Multi-Step AI Agent | **Met** | EventBridge → Lambda → ES → Workflow (6 queries + 5 conditions per cart) → AI Agent → 2 MCP tools |
+| Reasoning Model Integration | **Met** | Elastic AI Agent interprets diagnosis, chains MCP tool calls, returns structured response |
+| Multiple Tool Types | **Met** | ES search, data.set, if/foreach, ai.agent, MCP tools, Lambda, EventBridge, SES, S3, API GW |
+| Real-World Task Automation | **Met** | End-to-end: detection → diagnosis → decision → email delivery → history tracking |
+| Real-World Applicability | **Met** | Event-driven, idempotent, fraud guardrails, feedback loop, API security, observability |
