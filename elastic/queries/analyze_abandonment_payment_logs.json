@@ -1,0 +1,11 @@
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "cart_id": "${cart_id}" } }
+      ]
+    }
+  },
+  "size": 1,
+  "sort": [{ "@timestamp": { "order": "desc" } }]
+}

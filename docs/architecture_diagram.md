@@ -1,238 +1,204 @@
-# 🏗️ System Architecture Diagram
+# System Architecture Diagram
 
 ## Overview
 
-The AI Abandoned Cart Recovery Agent is built on Elastic's complete serverless platform, orchestrating multiple components to deliver intelligent, context-aware cart recovery.
+The AI Abandoned Cart Recovery Agent combines **AWS EventBridge + Lambda** for
+event ingestion, **Elasticsearch** for storage and scheduled workflows, and an
+**Elastic AI Agent** that calls two **MCP tools** (Decision Engine & Recovery
+Action) hosted behind an **API Gateway**.
 
-## Architecture Components
+---
 
-```mermaid
-graph TB
-    subgraph "Data Sources"
-        CE[Cart Events]
-        CHE[Checkout Events]
-        PL[Payment Logs]
-        CP[Customer Profiles]
-        SM[Session Metrics]
-    end
+## High-Level Architecture
 
-    subgraph "Elasticsearch Serverless"
-        ES[Elasticsearch Cluster]
-        ES --> CE
-        ES --> CHE
-        ES --> PL
-        ES --> CP
-        ES --> SM
-    end
-
-    subgraph "Workflow Engine"
-        WF[Serverless Workflow]
-        WF --> ES
-    end
-
-    subgraph "AI Layer"
-        AI[AI Assistant]
-        AB[Agent Builder]
-        AI --> WF
-        AB --> AI
-    end
-
-    subgraph "Decision Logic"
-        DM[Decision Matrix]
-        CS[Customer Segmentation]
-        AR[Abandonment Reasoning]
-        FR[Fraud Risk Assessment]
-        
-        DM --> CS
-        DM --> AR
-        DM --> FR
-        WF --> DM
-    end
-
-    subgraph "Recovery Actions"
-        PR[Payment Retry]
-        FS[Free Shipping]
-        DIS[Discount Offer]
-        REM[Reminder Only]
-        BLK[Blocked Action]
-        
-        DM --> PR
-        DM --> FS
-        DM --> DIS
-        DM --> REM
-        DM --> BLK
-    end
-
-    subgraph "Output & Tracking"
-        RH[Recovery History]
-        NOT[Notification Service]
-        ANAL[Analytics Dashboard]
-        
-        WF --> RH
-        WF --> NOT
-        RH --> ANAL
-    end
-
-    subgraph "External Systems"
-        EMAIL[Email Service]
-        SMS[SMS Gateway]
-        PUSH[Push Notification]
-        WEBHOOK[Webhook API]
-        
-        NOT --> EMAIL
-        NOT --> SMS
-        NOT --> PUSH
-        NOT --> WEBHOOK
-    end
-
-    style ES fill:#f3f9ff
-    style WF fill:#e8f4fd
-    style AI fill:#fff4e6
-    style DM fill:#f0f9ff
-    style RH fill:#f0fdf4
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  E-Commerce Platform / Seed Script                                          │
+│                                                                             │
+│  Emits events:                                                              │
+│    • customer_profiles   • cart_events      • checkout_events               │
+│    • payment_logs        • session_metrics   • recovery_history             │
+└────────────────────────────────┬─────────────────────────────────────────────┘
+                                 │  PutEvents
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        Amazon EventBridge                                    │
+│                     (custom event bus)                                       │
+└────────────────────────────────┬─────────────────────────────────────────────┘
+                                 │  Rule triggers
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    Event Ingest Lambda                                       │
+│                                                                             │
+│  • Indexes each event into its Elasticsearch index                          │
+│  • Creates / updates  cart_state  (active → completed → recovery_sent)      │
+└────────────────────────────────┬─────────────────────────────────────────────┘
+                                 │  elasticsearch-py
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        Elasticsearch                                        │
+│                                                                             │
+│  Indices:                                                                   │
+│    customer_profiles │ cart_events │ checkout_events                         │
+│    payment_logs      │ session_metrics │ cart_state │ recovery_history       │
+│                                                                             │
+│ ┌──────────────────────────────────────────────────────────────────────────┐ │
+│ │  Scheduled Workflow: detect_abandonment_reasons  (every 5 min)          │ │
+│ │                                                                        │ │
+│ │  1. Query  cart_state  (status=active, check_at < now)                 │ │
+│ │  2. For each abandoned cart:                                           │ │
+│ │     a. Fetch customer_profiles, cart_events, checkout_events,          │ │
+│ │        payment_logs, session_metrics                                   │ │
+│ │     b. Diagnose root cause:                                            │ │
+│ │        payment_failure │ pricing_shipping │ performance_latency         │ │
+│ │        browsing_or_window_shopping │ unknown                           │ │
+│ │     c. Emit diagnosis + customer profile data                          │ │
+│ │                                                                        │ │
+│ │  3. Call  Elastic AI Agent  ──────────────────────────────┐            │ │
+│ └──────────────────────────────────────────────────────────────┘          │ │
+│                                                              │            │ │
+│ ┌──────────────────────────────────────────────────────────────┐          │ │
+│ │  Elastic AI Agent  (agent_id: abandoned_cart)              │            │ │
+│ │                                                            │            │ │
+│ │  Receives diagnosis payload and calls MCP tools:           │            │ │
+│ │    1. decision_engine  → get recommended action            │            │ │
+│ │    2. recovery_action  → send recovery message             │            │ │
+│ └───────────────┬────────────────────────────────────────────┘            │ │
+└─────────────────┼────────────────────────────────────────────────────────────┘
+                  │  Streamable HTTP (JSON-RPC 2.0)
+                  │  x-api-key header
+                  ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        AWS API Gateway                                       │
+│                   POST /mcp  (API Key auth)                                  │
+└────────────────────────────────┬─────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                       MCP Server Lambda                                      │
+│                   (JSON-RPC 2.0 router)                                      │
+│                                                                             │
+│  Methods: initialize │ ping │ tools/list │ tools/call                        │
+└───────────┬──────────────────────────────┬───────────────────────────────────┘
+            │ lambda:InvokeFunction         │ lambda:InvokeFunction
+            ▼                               ▼
+┌─────────────────────────┐   ┌──────────────────────────────┐
+│  Decision Engine Lambda │   │  Recovery Action Lambda       │
+│                         │   │                              │
+│  • Reads decision       │   │  • Sends email via SES       │
+│    matrix from S3       │   │  • Publishes recovery_history│
+│  • Resolves action by   │   │    event to EventBridge      │
+│    segment, reason,     │   │    (loops back to ingest)    │
+│    cart value, fraud    │   │                              │
+│  • Returns: action,     │   │  • Returns: status, channel, │
+│    discount, message    │   │    message_id, sent_at       │
+└─────────────────────────┘   └──────────────────────────────┘
 ```
 
-## Data Flow Architecture
+---
+
+## Mermaid Diagram
 
 ```mermaid
-flowchart LR
-    subgraph "Event Ingestion"
-        A[Cart Abandonment Event]
-        B[Checkout Attempt]
-        C[Payment Failure]
-        D[Customer Profile Update]
+flowchart TD
+    subgraph Sources["E-Commerce Platform / Seed Script"]
+        CP_E([customer_profiles])
+        CE_E([cart_events])
+        CHE_E([checkout_events])
+        PL_E([payment_logs])
+        SM_E([session_metrics])
+        RH_E([recovery_history])
     end
 
-    subgraph "Real-time Processing"
-        E[Event Correlation]
-        F[Pattern Recognition]
-        G[Risk Assessment]
+    EB["Amazon EventBridge"]
+
+    CP_E & CE_E & CHE_E & PL_E & SM_E & RH_E -->|PutEvents| EB
+
+    INGEST["Event Ingest Lambda
+    indexes docs + manages cart_state"]
+
+    EB -->|Rule trigger| INGEST
+
+    subgraph ES["Elasticsearch"]
+        direction TB
+        IDX["Indices
+        customer_profiles · cart_events · checkout_events
+        payment_logs · session_metrics · cart_state · recovery_history"]
+
+        subgraph WF["Scheduled Workflow (every 5 min)"]
+            direction TB
+            W1["1 · Query cart_state
+            status=active, check_at < now"]
+            W2["2 · For each cart: fetch related
+            events, diagnose root cause"]
+            W3["3 · Emit diagnosis +
+            customer profile"]
+            W1 --> W2 --> W3
+        end
+
+        subgraph AGENT["Elastic AI Agent (abandoned_cart)"]
+            A1["Receive diagnosis payload"]
+            A2["Call MCP tool: decision_engine"]
+            A3["Call MCP tool: recovery_action"]
+            A1 --> A2 --> A3
+        end
+
+        IDX --- WF
+        W3 --> AGENT
     end
 
-    subgraph "Decision Engine"
-        H[Customer Segmentation]
-        I[Abandonment Diagnosis]
-        J[Action Selection]
-    end
+    INGEST -->|Index docs| IDX
 
-    subgraph "Execution Layer"
-        K[Recovery Action]
-        L[Notification Delivery]
-        M[Result Tracking]
-    end
+    APIGW["AWS API Gateway
+    POST /mcp · API Key auth"]
 
-    subgraph "Analytics & Learning"
-        N[Success Metrics]
-        O[ROI Calculation]
-        P[Strategy Optimization]
-    end
+    AGENT -->|"Streamable HTTP
+    JSON-RPC 2.0"| APIGW
 
-    A --> E
-    B --> E
-    C --> E
-    D --> E
-    
-    E --> F
-    F --> G
-    G --> H
-    
-    H --> I
-    I --> J
-    J --> K
-    
-    K --> L
-    L --> M
-    M --> N
-    
-    N --> O
-    O --> P
-    P --> H
+    MCP["MCP Server Lambda
+    JSON-RPC router"]
+    APIGW --> MCP
+
+    DE["Decision Engine Lambda
+    S3 decision matrix → action"]
+    RA["Recovery Action Lambda
+    SES email + EventBridge event"]
+
+    MCP -->|"lambda:Invoke"| DE
+    MCP -->|"lambda:Invoke"| RA
+
+    RA -.->|"recovery_history
+    event"| EB
+
+    style EB fill:#ff9900,color:#fff
+    style INGEST fill:#ff9900,color:#fff
+    style ES fill:#005571,color:#fff
+    style IDX fill:#00bfb3,color:#000
+    style WF fill:#f0f9ff,color:#000
+    style AGENT fill:#fff4e6,color:#000
+    style APIGW fill:#ff9900,color:#fff
+    style MCP fill:#ff9900,color:#fff
+    style DE fill:#ff9900,color:#fff
+    style RA fill:#ff9900,color:#fff
 ```
 
-## Component Interactions
+---
 
-### 1. **Data Layer**
-- **Cart Events**: Real-time cart activity tracking
-- **Checkout Events**: Checkout process monitoring
-- **Payment Logs**: Transaction failure analysis
-- **Customer Profiles**: Historical behavior and segmentation
-- **Session Metrics**: Performance and user experience data
+## Flow Summary
 
-### 2. **Processing Layer**
-- **Elasticsearch**: Unified data storage and real-time queries
-- **Workflow Engine**: Orchestration of multi-step processes
-- **AI Assistant**: Natural language interface and intelligent decision-making
+| Step | Component | Description |
+|------|-----------|-------------|
+| **1** | **EventBridge → Event Ingest Lambda → Elasticsearch** | All events (customer_profiles, cart_events, checkout_events, payment_logs, session_metrics, recovery_history) are emitted to EventBridge. A Lambda function indexes each event into the corresponding Elasticsearch index and maintains a `cart_state` document per cart. |
+| **2** | **Elasticsearch Scheduled Workflow** | `detect_abandonment_reasons` runs every 5 minutes. It queries `cart_state` for active carts past their `check_at` time, fetches related data from all indices, and diagnoses the root cause of abandonment (payment failure, shipping cost, latency, browsing, or unknown). |
+| **3** | **Elastic AI Agent** | The workflow calls an AI agent (`abandoned_cart`) with the full diagnosis payload including cart data, customer profile, and root cause signals. |
+| **4** | **MCP Tools via API Gateway** | The agent calls two tools sequentially through the MCP Server (Streamable HTTP, API Key auth): |
+| 4a | **Decision Engine** | Reads the decision matrix from S3 and returns the recommended action (discount, free shipping, payment retry, reminder, or blocked) based on customer segment, abandonment reason, cart value, and fraud risk. |
+| 4b | **Recovery Action** | Sends a recovery email via Amazon SES and publishes a `recovery_history` event back to EventBridge, which loops through the ingest pipeline for tracking. |
 
-### 3. **Decision Layer**
-- **Decision Matrix**: Multi-variable logic for action selection
-- **Customer Segmentation**: VIP, Standard, High Fraud Risk classification
-- **Abandonment Reasoning**: Payment failure, shipping issues, browsing abandonment
-- **Fraud Risk Assessment**: Real-time risk scoring and guardrails
+---
 
-### 4. **Action Layer**
-- **Payment Retry**: Alternative payment method offering
-- **Free Shipping**: Address shipping cost concerns
-- **Discount Offer**: Strategic discount based on cart value
-- **Reminder Only**: Low-risk engagement for fraud cases
-- **Blocked Action**: Fraud prevention measure
+## Feedback Loop
 
-### 5. **Output Layer**
-- **Recovery History**: Complete audit trail and analytics
-- **Notification Service**: Multi-channel delivery (email, SMS, push)
-- **Analytics Dashboard**: Performance metrics and insights
-
-## Technology Stack
-
-### **Elastic Serverless Platform**
-- **Elasticsearch**: Real-time search and analytics
-- **Workflows**: Orchestration and automation
-- **AI Assistant**: Natural language processing
-- **Agent Builder**: Tool integration and guardrails
-
-### **Integration Patterns**
-- **Event-driven architecture** for real-time processing
-- **Microservices pattern** for scalable components
-- **API-first design** for external integrations
-- **Immutable data structures** for audit trails
-
-### **Security & Compliance**
-- **Role-based access control** for data protection
-- **Encryption at rest and in transit** for security
-- **Audit logging** for compliance requirements
-- **Data retention policies** for privacy
-
-## Scalability Considerations
-
-### **Horizontal Scaling**
-- **Serverless architecture** automatically scales with demand
-- **Distributed processing** handles thousands of carts simultaneously
-- **Load balancing** ensures optimal performance
-- **Auto-scaling** adapts to traffic patterns
-
-### **Performance Optimization**
-- **Index optimization** for fast query responses
-- **Caching strategies** reduce database load
-- **Batch processing** for efficient bulk operations
-- **Connection pooling** for resource management
-
-### **Reliability Features**
-- **Fault tolerance** with automatic failover
-- **Retry mechanisms** for transient failures
-- **Circuit breakers** prevent cascading failures
-- **Health monitoring** for proactive issue detection
-
-## Integration Points
-
-### **External Systems**
-- **Payment Gateways**: Stripe, PayPal, Apple Pay
-- **Email Services**: SendGrid, Mailgun, AWS SES
-- **SMS Providers**: Twilio, Vonage, AWS SNS
-- **Push Platforms**: Firebase, OneSignal, AWS SNS
-
-### **API Endpoints**
-- **Webhook receivers** for real-time events
-- **REST APIs** for system integration
-- **GraphQL queries** for flexible data access
-- **Streaming endpoints** for real-time updates
-
-This architecture demonstrates how modern serverless platforms can power complex, intelligent automation systems that scale efficiently while maintaining security and reliability.
+The Recovery Action Lambda publishes a `recovery_history` event back to
+EventBridge. The Event Ingest Lambda picks it up and updates `cart_state` to
+`recovery_sent`, closing the loop and preventing duplicate recovery attempts.

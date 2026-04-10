@@ -1,0 +1,13 @@
+{
+  "size": 100,
+  "query": {
+    "bool": {
+      "filter": [
+        { "term": { "status": "active" } },
+        { "range": { "check_at": { "lt": "now" } } }
+      ]
+    }
+  },
+  "sort": [{ "check_at": { "order": "asc" } }],
+  "_source": ["cart_id", "customer_id", "last_seen", "check_at", "status", "cart_value", "currency", "device_type"]
+}

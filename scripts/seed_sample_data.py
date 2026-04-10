@@ -2,43 +2,22 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dotenv import load_dotenv
-from elasticsearch import Elasticsearch
-from elasticsearch.helpers import bulk
+import boto3
+import json
 import random
 
 def utc(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
-def build_es_client() -> Elasticsearch:
-    project_root = Path(__file__).resolve().parents[1]
-    load_dotenv(project_root / ".env")
-
-    # Serverless takes precedence
-    serverless_endpoint = os.getenv("ES_SERVERLESS_ENDPOINT")
-    serverless_api_key = os.getenv("ES_SERVERLESS_API_KEY")
-    if serverless_endpoint and serverless_api_key:
-        print(f"Connecting to Elastic Serverless at {serverless_endpoint}")
-        return Elasticsearch(serverless_endpoint, api_key=serverless_api_key)
-
-    # Fallback to self-hosted
-    es_url = os.getenv("ES_URL", "http://localhost:9200")
-    api_key = os.getenv("ES_API_KEY") or None
-    username = os.getenv("ES_USERNAME") or None
-    password = os.getenv("ES_PASSWORD") or None
-
-    if api_key:
-        print(f"Connecting to Elasticsearch at {es_url} with API key")
-        return Elasticsearch(es_url, api_key=api_key)
-
-    if username and password:
-        print(f"Connecting to Elasticsearch at {es_url} with basic auth")
-        return Elasticsearch(es_url, basic_auth=(username, password))
-
-    print(f"Connecting to Elasticsearch at {es_url} (no auth)")
-    return Elasticsearch(es_url)
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 def main() -> None:
-    es = build_es_client()
+    # Send to EventBridge; Lambda will handle indexing into Elasticsearch
+    eb = boto3.client("events", region_name="us-east-1")
+    event_bus = os.getenv("EVENT_BUS_NAME")
+    if not event_bus:
+        raise ValueError("EVENT_BUS_NAME environment variable is required")
+    print(f"Using EventBus: {event_bus}")
 
     now = datetime.now(timezone.utc)
 
@@ -718,37 +697,72 @@ def main() -> None:
         },
     ]
 
-    actions = []
-    actions.extend(customers)
-    actions.extend(cart_events)
-    actions.extend(checkout_events)
-    actions.extend(payment_logs)
-    actions.extend(session_metrics)
-    actions.extend(recovery_history)
+    # Send documents as EventBridge events; Lambda will index into Elasticsearch
+    all_docs = []
+    all_docs.extend(customers)
+    all_docs.extend(cart_events)
+    all_docs.extend(checkout_events)
+    all_docs.extend(payment_logs)
+    all_docs.extend(session_metrics)
+    all_docs.extend(recovery_history)
 
-    bulk(es, actions)
+    def _make_entry(doc):
+        return {
+            "Source": "ai-abandoned-cart",
+            "DetailType": doc["_index"],
+            "Detail": json.dumps({
+                "_index": doc["_index"],
+                "_id": doc.get("_id"),
+                "_source": doc.get("_source"),
+            }),
+            "EventBusName": event_bus,
+        }
 
-    es.indices.refresh(index=[
-        "customer_profiles",
-        "cart_events", 
-        "checkout_events",
-        "payment_logs",
-        "session_metrics",
-        "recovery_history",
-    ])
+    # EventBridge PutEvents accepts up to 10 entries at a time
+    batch = []
+    sent = 0
+    accepted = 0
+    for doc in all_docs:
+        batch.append(_make_entry(doc))
+        if len(batch) == 10:
+            resp = eb.put_events(Entries=batch)
+            batch_accepted = sum(1 for e in resp.get("Entries", []) if "ErrorCode" not in e)
+            batch_failed = len(batch) - batch_accepted
+            if batch_failed > 0:
+                print(f"Batch failed: {batch_failed}/{len(batch)} events rejected")
+                for e in resp.get("Entries", []):
+                    if "ErrorCode" in e:
+                        print(f"  Error: {e.get('ErrorCode')} - {e.get('ErrorMessage')}")
+            accepted += batch_accepted
+            sent += len(batch)
+            batch = []
 
-    print(f"Enhanced sample data seeded successfully!")
-    print(f"Generated {len(customers)} customer profiles")
-    print(f"Generated {len(cart_events)} cart events")
-    print(f"Generated {len(checkout_events)} checkout events")
-    print(f"Generated {len(payment_logs)} payment logs")
-    print(f"Generated {len(session_metrics)} session metrics")
-    print(f"Generated {len(recovery_history)} recovery history entries")
-    print(f"Total {len(actions)} documents indexed")
-    
+    if batch:
+        resp = eb.put_events(Entries=batch)
+        batch_accepted = sum(1 for e in resp.get("Entries", []) if "ErrorCode" not in e)
+        batch_failed = len(batch) - batch_accepted
+        if batch_failed > 0:
+            print(f"Final batch failed: {batch_failed}/{len(batch)} events rejected")
+            for e in resp.get("Entries", []):
+                if "ErrorCode" in e:
+                    print(f"  Error: {e.get('ErrorCode')} - {e.get('ErrorMessage')}")
+        accepted += batch_accepted
+        sent += len(batch)
+
+    print(f"Enhanced sample data events sent to EventBridge: attempted={sent} accepted={accepted}")
+    print(f"Generated {len(customers)} customer profiles (events)")
+    print(f"Generated {len(cart_events)} cart events (events)")
+    print(f"Generated {len(checkout_events)} checkout events (events)")
+    print(f"Generated {len(payment_logs)} payment logs (events)")
+    print(f"Generated {len(session_metrics)} session metrics (events)")
+    print(f"Generated {len(recovery_history)} recovery history entries (events)")
+
     print("\n=== Test Scenarios Created ===")
     print("1. cart_1001: VIP customer with payment failure -> payment_retry")
     print("2. cart_2002: Standard customer with shipping cost -> free_shipping")
     print("3. cart_3003: New customer with performance issues -> reminder")
     print("4. cart_4004: High fraud risk customer -> reminder (guardrail)")
     print("5. cart_5005: International customer -> based on history")
+
+if __name__ == "__main__":
+    main()

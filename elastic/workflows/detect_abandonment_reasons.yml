@@ -1,0 +1,295 @@
+name: detect_abandonment_reasons
+description: >
+  Detects abandoned carts from cart_state (status=active, check_at < now),
+  then diagnoses the most-likely reason each cart was abandoned using
+  cart, checkout, payment, and session signals. Enriches with customer profile data
+  and uses AI agent with MCP tools to execute recovery actions.
+enabled: true
+triggers:
+  - type: scheduled
+    with:
+      every: "5m"
+
+steps:
+  # Step 1: Find abandoned cart IDs from cart_state
+  - name: find_abandoned_carts
+    type: elasticsearch.search
+    with:
+      _source:
+        - "cart_id"
+        - "customer_id"
+        - "last_seen"
+        - "check_at"
+        - "status"
+        - "cart_value"
+        - "currency"
+        - "device_type"
+        - "session_id"
+      index: cart_state
+      query:
+        bool:
+          filter:
+            - term:
+                status: "active"
+            - range:
+                check_at:
+                  lt: "now"
+      size: 100
+      sort: "check_at"
+
+  # Step 2: Extract cart data into structured format
+  - name: extract_cart_data
+    type: data.set
+    with:
+      carts: "{{steps.find_abandoned_carts.output.hits.hits | map: '_source' | json}}"
+
+  # Step 3: Diagnose each abandoned cart
+  - name: conditionalStep
+    type: if
+    condition: ${{steps.extract_cart_data.output.carts.length >0}}
+    steps:      
+    - name: for_each_cart
+      type: foreach
+      foreach: "{{steps.extract_cart_data.output.carts}}"
+      steps:
+        # Fetch customer profile data
+        - name: fetch_customer_profile
+          type: elasticsearch.search
+          with:
+            index: customer_profiles
+            query:
+              term:
+                customer_id: "{{foreach.item.customer_id}}"
+            size: 1
+            _source:
+              - "customer_id"
+              - "segment"
+              - "lifetime_value"
+              - "preferred_channel"
+              - "fraud_risk"
+              - "email"
+              - "phone"
+
+        - name: fetch_cart_events
+          type: elasticsearch.search
+          with:
+            index: cart_events
+            query:
+              term:
+                cart_id: "{{foreach.item.cart_id}}"
+            size: 10
+
+        - name: fetch_latest_checkout
+          type: elasticsearch.search
+          with:
+            index: checkout_events
+            query:
+              term:
+                cart_id: "{{foreach.item.cart_id}}"
+            size: 1
+
+        - name: fetch_latest_payment
+          type: elasticsearch.search
+          with:
+            index: payment_logs
+            query:
+              term:
+                cart_id: "{{foreach.item.cart_id}}"
+            size: 1
+
+        - name: fetch_session_metrics
+          type: elasticsearch.search
+          with:
+            index: session_metrics
+            query:
+              term:
+                session_id: "{{steps.fetch_cart_events.output.hits.hits[0]._source.session_id}}"
+            size: 1
+
+        - name: decide_payment_failure
+          type: if
+          condition: "${{steps.fetch_latest_payment.output.hits.total.value>0 and steps.fetch_latest_payment.output.hits.hits[0]._source.status==\"failed\"}}"
+          steps:
+            - name: set_payment_failure_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item.cart_id}}"
+                diagnosis:
+                  root_cause: payment_failure
+                  signals:
+                    - "{{steps.fetch_latest_payment.output.hits.hits[0]._source.failure_code}}"
+                    - "{{steps.fetch_latest_payment.output.hits.hits[0]._source.failure_message}}"
+
+        - name: decide_checkout_shipping
+          type: if
+          condition: "${{steps.fetch_latest_checkout.output.hits.total.value>0 and steps.fetch_latest_checkout.output.hits.hits[0]._source.step==\"shipping_failed\"}}"
+          steps:
+            - name: set_shipping_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item.cart_id}}"
+                diagnosis:
+                  root_cause: pricing_shipping
+                  signals:
+                    - "shipping_cost: {{steps.fetch_latest_checkout.output.hits.hits[0]._source.shipping_cost}}"
+                    - "step: {{steps.fetch_latest_checkout.output.hits.hits[0]._source.step}}"
+
+        - name: decide_performance
+          type: if
+          condition: "${{steps.fetch_session_metrics.output.hits.total.value>0}}"
+          steps:
+            - name: check_performance_thresholds
+              type: if
+              condition: "${{steps.fetch_session_metrics.output.hits.hits[0]._source.p95_latency_ms>1000 or steps.fetch_session_metrics.output.hits.hits[0]._source.error_rate>0.05}}"
+              steps:
+                - name: set_performance_reason
+                  type: data.set
+                  with:
+                    cart_id: "{{foreach.item.cart_id}}"
+                    diagnosis:
+                      root_cause: performance_latency
+                      signals:
+                        - "p95_latency_ms: {{steps.fetch_session_metrics.output.hits.hits[0]._source.p95_latency_ms}}"
+                        - "error_rate: {{steps.fetch_session_metrics.output.hits.hits[0]._source.error_rate}}"
+
+        - name: decide_browse
+          type: if
+          condition: "${{steps.fetch_cart_events.output.hits.total.value>0 and steps.fetch_latest_checkout.output.hits.total.value==0}}"
+          steps:
+            - name: set_browse_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item.cart_id}}"
+                diagnosis:
+                  root_cause: browsing_or_window_shopping
+                  signals:
+                    - "cart_events_count: {{steps.fetch_cart_events.output.hits.total.value}}"
+
+        - name: decide_unknown
+          type: if
+          condition: "${{steps.fetch_latest_payment.output.hits.total.value==0 and steps.fetch_latest_checkout.output.hits.total.value==0 and steps.fetch_session_metrics.output.hits.total.value==0}}"
+          steps:
+            - name: set_unknown_reason
+              type: data.set
+              with:
+                cart_id: "{{foreach.item.cart_id}}"
+                diagnosis:
+                  root_cause: unknown
+                  signals: ["insufficient_signals"]
+
+        # Emit single final diagnosis with cart value, customer data, and customer profile
+        - name: emit_final_diagnosis
+          type: data.set
+          with:
+            cart_id: "{{foreach.item.cart_id}}"
+            customer_id: "{{foreach.item.customer_id}}"
+            cart_value: "{{foreach.item.cart_value}}"
+            currency: "{{foreach.item.currency}}"
+            device_type: "{{foreach.item.device_type}}"
+            last_seen: "{{foreach.item.last_seen}}"
+            session_id: "{{foreach.item.session_id}}"
+            check_at: "{{foreach.item.check_at}}"
+            customer_profile:
+              segment: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.segment}}"
+              lifetime_value: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.lifetime_value}}"
+              preferred_channel: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.preferred_channel}}"
+              fraud_risk: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.fraud_risk}}"
+              email: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.email}}"
+              phone: "{{steps.fetch_customer_profile.output.hits.hits[0]._source.phone}}"
+            final_diagnosis: >-
+              {% if steps.set_payment_failure_reason.output.diagnosis %}
+                {{steps.set_payment_failure_reason.output.diagnosis | json}}
+              {% elsif steps.set_shipping_reason.output.diagnosis %}
+                {{steps.set_shipping_reason.output.diagnosis | json}}
+              {% elsif steps.set_performance_reason.output.diagnosis %}
+                {{steps.set_performance_reason.output.diagnosis | json}}
+              {% elsif steps.set_browse_reason.output.diagnosis %}
+                {{steps.set_browse_reason.output.diagnosis | json}}
+              {% elsif steps.set_unknown_reason.output.diagnosis %}
+                {{steps.set_unknown_reason.output.diagnosis | json}}
+              {% endif %}
+
+        # AI Agent with MCP tools: calls decision engine then recovery action
+        - name: analyze_with_ai_agent
+          type: ai.agent
+          with:
+            agent_id: "abandoned_cart"
+            message: |-
+              You have access to MCP tools for cart recovery. Use them to process this abandoned cart.
+
+              **Emitted Cart Data:**
+              ```json
+              {{steps.emit_final_diagnosis.output | json}}
+              ```
+
+              **Your Task:**
+              1. **First**, call the **decision engine MCP tool** with the following data:
+                 - cart_id: {{steps.emit_final_diagnosis.output.cart_id}}
+                 - customer_id: {{steps.emit_final_diagnosis.output.customer_id}}
+                 - cart_value: {{steps.emit_final_diagnosis.output.cart_value}}
+                 - currency: {{steps.emit_final_diagnosis.output.currency}}
+                 - root_cause: Extract from final_diagnosis
+                 - customer_segment: {{steps.emit_final_diagnosis.output.customer_profile.segment}}
+                 - lifetime_value: {{steps.emit_final_diagnosis.output.customer_profile.lifetime_value}}
+                 - fraud_risk: {{steps.emit_final_diagnosis.output.customer_profile.fraud_risk}}
+                 
+                 The decision engine will return the recommended recovery action, incentive, and priority.
+
+              2. **Then**, call the **recovery action MCP tool** with:
+                 - cart_id: {{steps.emit_final_diagnosis.output.cart_id}}
+                 - customer_id: {{steps.emit_final_diagnosis.output.customer_id}}
+                 - recommended_action: (from decision engine result)
+                 - incentive: (from decision engine result)
+                 - channel: {{steps.emit_final_diagnosis.output.customer_profile.preferred_channel}}
+                 - email: {{steps.emit_final_diagnosis.output.customer_profile.email}}
+                 - phone: {{steps.emit_final_diagnosis.output.customer_profile.phone}}
+                 
+                 This will send the recovery message via the customer's preferred channel.
+
+              Execute both MCP tool calls in sequence and report the results.
+            schema:
+              type: object
+              properties:
+                decision_engine_result:
+                  type: object
+                  description: Result from the decision engine MCP tool call
+                  properties:
+                    recommended_action:
+                      type: string
+                      description: The action recommended by the decision engine
+                    incentive:
+                      type: string
+                      description: Recommended incentive or discount
+                    priority:
+                      type: string
+                      enum:
+                        - high
+                        - medium
+                        - low
+                      description: Priority level for this recovery
+                    reasoning:
+                      type: string
+                      description: Explanation from decision engine
+                recovery_action_result:
+                  type: object
+                  description: Result from the recovery action MCP tool call
+                  properties:
+                    status:
+                      type: string
+                      description: Status of the recovery action (e.g., 'sent', 'failed', 'queued')
+                    channel_used:
+                      type: string
+                      description: Channel used to send recovery message (email, sms, push)
+                    message_id:
+                      type: string
+                      description: ID of the sent message for tracking
+                    sent_at:
+                      type: string
+                      description: Timestamp when message was sent
+                summary:
+                  type: string
+                  description: Brief summary of the complete recovery process
+              required:
+                - decision_engine_result
+                - recovery_action_result
+                - summary
